@@ -46,13 +46,13 @@ claude    # 在项目目录启动 Claude Code，开始对话
 
 |  | 功能 | 说明 |
 |--|------|------|
-| **PDF 解析** | 深度结构提取 | [MinerU](https://github.com/opendatalab/MinerU) → Markdown，图表、公式完整保留 |
+| **PDF 解析** | 深度结构提取 | [MinerU](https://github.com/opendatalab/MinerU) → Markdown，图表、公式完整保留。支持期刊论文、学位论文、技术报告等多种文档类型 |
 | **融合检索** | 关键词 + 语义 | FTS5 + Qwen3 嵌入 + FAISS → RRF 排序融合 |
-| **主题发现** | 自动聚类 | BERTopic + 6 种交互式 HTML 可视化 |
-| **期刊探索** | 全量期刊调研 | OpenAlex 多维过滤 → 向量化 → 聚类 → 语义搜索 |
+| **主题发现** | 自动聚类 | BERTopic + 6 种交互式 HTML 可视化——同时支持主库和 explore 数据集 |
+| **文献探索** | 多维度发现 | OpenAlex 9 维过滤（期刊、概念、作者、机构、关键词、来源类型、年份、引用量、文献类型）→ 向量化 → 聚类 → 检索 |
 | **引用图谱** | 参考文献与影响力 | 正向/反向引用、共同引用分析 |
 | **分层阅读** | 按需加载 | L1 元数据 → L2 摘要 → L3 结论 → L4 全文 |
-| **多源导入** | 带上你的文献库 | Endnote XML/RIS、Zotero（API + SQLite）、PDF、Markdown——更多来源持续接入 |
+| **多源导入** | 带上你的文献库 | Endnote XML/RIS、Zotero（API + SQLite，支持 collection → workspace 映射）、PDF、Markdown——更多来源持续接入 |
 | **工作区** | 按项目组织 | 论文子集管理，支持范围内检索和 BibTeX 导出 |
 | **学术写作** | AI 辅助撰写 | 文献综述、论文章节、引用验证、审稿回复、研究空白分析——每条引用可追溯至你自己的文献库 |
 | **MCP 服务器** | 31 个工具 | Claude Desktop、Cursor 等 MCP 客户端均可调用 |

@@ -46,13 +46,13 @@ claude    # Launch Claude Code in the project directory — that's it
 
 |  | Feature | Details |
 |--|---------|---------|
-| **PDF Parsing** | Deep structure extraction | [MinerU](https://github.com/opendatalab/MinerU) → Markdown with figures, tables, LaTeX equations preserved |
+| **PDF Parsing** | Deep structure extraction | [MinerU](https://github.com/opendatalab/MinerU) → Markdown with figures, tables, LaTeX equations preserved. Papers, theses, technical reports, and other document types all supported |
 | **Hybrid Search** | Keyword + semantic fusion | FTS5 + Qwen3 embeddings + FAISS → RRF ranking |
-| **Topic Discovery** | Auto-clustering | BERTopic + 6 interactive HTML visualizations |
-| **Journal Exploration** | Full-journal survey | OpenAlex multi-filter fetch → embed → cluster → search |
+| **Topic Discovery** | Auto-clustering | BERTopic + 6 interactive HTML visualizations — works on both your library and explore datasets |
+| **Literature Exploration** | Multi-dimensional discovery | OpenAlex with 9 filter dimensions (journal, concept, author, institution, keyword, source type, year, citations, work type) → embed → cluster → search |
 | **Citation Graph** | References & impact | Forward/backward citations, shared references across your library |
 | **Layered Reading** | Read at the depth you need | L1 metadata → L2 abstract → L3 conclusion → L4 full text |
-| **Multi-Source Import** | Bring your existing library | Endnote XML/RIS, Zotero (API + SQLite), PDF, Markdown — more sources planned |
+| **Multi-Source Import** | Bring your existing library | Endnote XML/RIS, Zotero (API + SQLite, with collection → workspace mapping), PDF, Markdown — more sources planned |
 | **Workspaces** | Organize for projects | Paper subsets with scoped search and BibTeX export |
 | **Academic Writing** | AI-assisted drafting | Literature review, paper sections, citation check, rebuttal, gap analysis — every claim traceable to your own library |
 | **MCP Server** | 31 tools | Works with Claude Desktop, Cursor, and any MCP client |
