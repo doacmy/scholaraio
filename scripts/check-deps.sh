@@ -14,12 +14,16 @@ fi
 GLOBAL_DIR="$HOME/.scholaraio"
 GLOBAL_CFG="$GLOBAL_DIR/config.yaml"
 
-# ---------- helper: find a working pip ----------
+# ---------- helper: find a working pip (Python 3 only) ----------
 find_pip() {
     if command -v pip3 >/dev/null 2>&1; then echo "pip3"; return; fi
-    if command -v pip >/dev/null 2>&1; then echo "pip"; return; fi
+    if command -v pip >/dev/null 2>&1; then
+        # Reject pip bound to Python 2
+        if pip --version 2>/dev/null | grep -q "python 3"; then
+            echo "pip"; return
+        fi
+    fi
     if python3 -m pip --version >/dev/null 2>&1; then echo "python3 -m pip"; return; fi
-    if python -m pip --version >/dev/null 2>&1; then echo "python -m pip"; return; fi
     echo ""
 }
 
@@ -63,13 +67,17 @@ if [ -z "$VIRTUAL_ENV" ] && [ -z "$CONDA_PREFIX" ]; then
     USER_FLAG="--user"
 fi
 
+INSTALL_LOG="$GLOBAL_DIR/install.log"
+mkdir -p "$GLOBAL_DIR"
+
 echo "[ScholarAIO] Installing scholaraio..."
 if [ -f "$PLUGIN_ROOT/pyproject.toml" ]; then
-    $PIP install $USER_FLAG "$PLUGIN_ROOT" 2>&1 | tail -3 || true
+    $PIP install $USER_FLAG "$PLUGIN_ROOT" >"$INSTALL_LOG" 2>&1 || true
 else
     echo "[ScholarAIO] WARNING: installing from unpinned GitHub source"
-    $PIP install $USER_FLAG "git+https://github.com/ZimoLiao/scholaraio.git" 2>&1 | tail -3 || true
+    $PIP install $USER_FLAG "git+https://github.com/ZimoLiao/scholaraio.git" >"$INSTALL_LOG" 2>&1 || true
 fi
+tail -3 "$INSTALL_LOG" 2>/dev/null || true
 
 if ! command -v scholaraio >/dev/null 2>&1; then
     # --user install may put binary in ~/.local/bin which is not on PATH
