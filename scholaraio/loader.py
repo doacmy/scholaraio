@@ -231,10 +231,18 @@ def enrich_l3(
 
     # Skip L3 for non-article types (thesis, book, document, etc.)
     _L3_SKIP_TYPES = {
-        "thesis", "dissertation",
-        "book", "monograph", "edited-book", "reference-book",
-        "book-chapter", "book-section", "book-part",
-        "document", "technical-report", "lecture-notes",
+        "thesis",
+        "dissertation",
+        "book",
+        "monograph",
+        "edited-book",
+        "reference-book",
+        "book-chapter",
+        "book-section",
+        "book-part",
+        "document",
+        "technical-report",
+        "lecture-notes",
     }
     paper_type = (data.get("paper_type") or "").lower().strip()
     if paper_type in _L3_SKIP_TYPES:
