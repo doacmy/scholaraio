@@ -278,8 +278,8 @@ def step_dedup(ctx: InboxCtx) -> StepResult:
 
     1. 调用 Crossref / S2 / OpenAlex API 补全元数据
     2. 有 DOI 时检查是否与已入库论文重复
-    3. 无 DOI 时：thesis inbox 标记直接放行；否则 LLM 判断是否 thesis
-    4. 无 DOI 且非 thesis 才转入 ``data/pending/``
+    3. 无 DOI 时：thesis inbox 标记直接放行；否则依次 LLM 判断是否 thesis / book
+    4. 无 DOI 且非 thesis/book 才转入 ``data/pending/``
 
     Args:
         ctx: Inbox 上下文，需要 ``ctx.meta`` 已设置。
@@ -1400,7 +1400,8 @@ def _detect_thesis(ctx: InboxCtx) -> bool:
         return False
 
     try:
-        text = ctx.md_path.read_text(encoding="utf-8")[:30000]
+        with open(ctx.md_path, encoding="utf-8") as f:
+            text = f.read(30000)
     except Exception as e:
         _log.debug("failed to read md for thesis detection: %s", e)
         return False
@@ -1444,18 +1445,12 @@ def _detect_thesis(ctx: InboxCtx) -> bool:
     )
     try:
         result = call_llm(prompt, ctx.cfg, purpose="detect_thesis", max_tokens=200)
-        import re
-
-        # Extract JSON from response
-        content = result.content.strip()
-        match = re.search(r"\{[^}]+\}", content)
-        if match:
-            data = json.loads(match.group())
-            is_thesis = bool(data.get("is_thesis", False))
-            if is_thesis:
-                reason = data.get("reason", "")
-                _log.debug("thesis detected by LLM: %s", reason)
-            return is_thesis
+        data = json.loads(result.content)
+        is_thesis = bool(data.get("is_thesis", False))
+        if is_thesis:
+            reason = data.get("reason", "")
+            _log.debug("thesis detected by LLM: %s", reason)
+        return is_thesis
     except Exception as e:
         _log.debug("thesis detection LLM call failed: %s", e)
 
@@ -1478,7 +1473,8 @@ def _detect_book(ctx: InboxCtx) -> bool:
         return False
 
     try:
-        text = ctx.md_path.read_text(encoding="utf-8")[:30000]
+        with open(ctx.md_path, encoding="utf-8") as f:
+            text = f.read(30000)
     except Exception as e:
         _log.debug("failed to read md for book detection: %s", e)
         return False
@@ -1521,17 +1517,12 @@ def _detect_book(ctx: InboxCtx) -> bool:
     )
     try:
         result = call_llm(prompt, ctx.cfg, purpose="detect_book", max_tokens=200)
-        import re
-
-        content = result.content.strip()
-        match = re.search(r"\{[^}]+\}", content)
-        if match:
-            data = json.loads(match.group())
-            is_book = bool(data.get("is_book", False))
-            if is_book:
-                reason = data.get("reason", "")
-                _log.debug("book detected by LLM: %s", reason)
-            return is_book
+        data = json.loads(result.content)
+        is_book = bool(data.get("is_book", False))
+        if is_book:
+            reason = data.get("reason", "")
+            _log.debug("book detected by LLM: %s", reason)
+        return is_book
     except Exception as e:
         _log.debug("book detection LLM call failed: %s", e)
 
