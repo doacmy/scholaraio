@@ -229,6 +229,18 @@ def enrich_l3(
     paper_d = json_path.parent
     data = read_meta(paper_d)
 
+    # Skip L3 for non-article types (thesis, book, document, etc.)
+    _L3_SKIP_TYPES = {
+        "thesis", "dissertation",
+        "book", "monograph", "edited-book", "reference-book",
+        "book-chapter", "book-section", "book-part",
+        "document", "technical-report", "lecture-notes",
+    }
+    paper_type = (data.get("paper_type") or "").lower().strip()
+    if paper_type in _L3_SKIP_TYPES:
+        _log.debug("skipping L3 for paper_type=%s: %s", paper_type, paper_d.name)
+        return True
+
     if data.get("l3_conclusion") and not force:
         _log.debug("existing L3 (method: %s), skipping", data.get("l3_extraction_method", "?"))
         return True

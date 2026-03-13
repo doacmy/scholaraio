@@ -326,8 +326,13 @@ def step_dedup(ctx: InboxCtx) -> StepResult:
             ctx.is_thesis = True
             ui("Detected as thesis, ingesting without DOI")
             return StepResult.OK
-        # Not thesis -> move to pending
-        _log.debug("no DOI and not thesis, moving to pending")
+        # No DOI -> LLM book detection
+        if _detect_book(ctx):
+            ctx.meta.paper_type = "book"
+            ui("Detected as book, ingesting without DOI")
+            return StepResult.OK
+        # Not thesis/book -> move to pending
+        _log.debug("no DOI and not thesis/book, moving to pending")
         _move_to_pending(ctx)
         ctx.status = "needs_review"
         return StepResult.FAIL
@@ -1453,6 +1458,82 @@ def _detect_thesis(ctx: InboxCtx) -> bool:
             return is_thesis
     except Exception as e:
         _log.debug("thesis detection LLM call failed: %s", e)
+
+    return False
+
+
+def _detect_book(ctx: InboxCtx) -> bool:
+    """LLM 判断无 DOI 论文是否为书籍/专著。
+
+    读取 MD 前 30000 字符，让 LLM 判断文档类型。
+    LLM 不可用时退回 False（走 pending 流程）。
+
+    Args:
+        ctx: Inbox 上下文，需要 ``ctx.md_path`` 已设置。
+
+    Returns:
+        ``True`` 如果判定为 book/monograph。
+    """
+    if not ctx.md_path or not ctx.md_path.exists():
+        return False
+
+    try:
+        text = ctx.md_path.read_text(encoding="utf-8")[:30000]
+    except Exception as e:
+        _log.debug("failed to read md for book detection: %s", e)
+        return False
+
+    # Fast heuristic: title/metadata already hints book
+    title = (ctx.meta.title or "").lower() if ctx.meta else ""
+    for keyword in (
+        "handbook",
+        "textbook",
+        "monograph",
+        "专著",
+        "教材",
+        "手册",
+    ):
+        if keyword in title:
+            _log.debug("book detected by title keyword: %s", keyword)
+            return True
+
+    # LLM detection
+    try:
+        api_key = ctx.cfg.resolved_api_key()
+    except Exception as e:
+        _log.debug("failed to resolve API key: %s", e)
+        api_key = None
+    if not api_key:
+        _log.debug("no LLM API key, skipping book detection")
+        return False
+
+    from scholaraio.metrics import call_llm
+
+    prompt = (
+        "Analyze the following document excerpt and determine if it is a "
+        "book or monograph (书籍/专著/教材/手册). "
+        "Look for indicators such as: ISBN, publisher information, "
+        "table of contents with chapters, preface/foreword, "
+        "book-specific formatting (parts/chapters rather than sections), "
+        "or multiple self-contained chapters with distinct topics.\n\n"
+        'Respond in JSON: {"is_book": true/false, "reason": "brief explanation"}\n\n'
+        f"--- DOCUMENT START ---\n{text}\n--- DOCUMENT END ---"
+    )
+    try:
+        result = call_llm(prompt, ctx.cfg, purpose="detect_book", max_tokens=200)
+        import re
+
+        content = result.content.strip()
+        match = re.search(r"\{[^}]+\}", content)
+        if match:
+            data = json.loads(match.group())
+            is_book = bool(data.get("is_book", False))
+            if is_book:
+                reason = data.get("reason", "")
+                _log.debug("book detected by LLM: %s", reason)
+            return is_book
+    except Exception as e:
+        _log.debug("book detection LLM call failed: %s", e)
 
     return False
 
