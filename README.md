@@ -141,7 +141,7 @@ scholaraio show PAPER         View paper content (L1-L4)
 
 **Ingest & Enrich**
 ```
-scholaraio pipeline           Run ingestion pipeline
+scholaraio pipeline PRESET    Run ingestion pipeline (full|ingest|enrich|reindex)
 scholaraio index              Build FTS5 search index
 scholaraio embed              Generate semantic vectors
 scholaraio enrich-toc         Extract table of contents
@@ -159,7 +159,8 @@ scholaraio shared-refs A B    Shared references between papers
 
 **Explore & Topics**
 ```
-scholaraio explore            Literature exploration (OpenAlex)
+scholaraio explore fetch ...  Literature exploration (OpenAlex multi-filter)
+scholaraio explore search ... Search within an explore library
 scholaraio topics             BERTopic topic modeling
 ```
 
@@ -168,8 +169,10 @@ scholaraio topics             BERTopic topic modeling
 scholaraio import-endnote     Import from Endnote
 scholaraio import-zotero      Import from Zotero
 scholaraio attach-pdf         Attach PDF to existing paper
-scholaraio export             Export BibTeX
-scholaraio ws                 Workspace management
+scholaraio export bibtex      Export BibTeX
+scholaraio ws init NAME       Create a workspace
+scholaraio ws add NAME PAPER  Add papers to workspace
+scholaraio ws search NAME Q   Search within workspace
 ```
 
 **Maintenance**

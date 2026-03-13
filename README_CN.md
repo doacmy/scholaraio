@@ -141,7 +141,7 @@ scholaraio show PAPER         查看论文内容（L1-L4）
 
 **入库与富化**
 ```
-scholaraio pipeline           运行入库流水线
+scholaraio pipeline PRESET    运行入库流水线（full|ingest|enrich|reindex）
 scholaraio index              构建 FTS5 检索索引
 scholaraio embed              生成语义向量
 scholaraio enrich-toc         提取目录结构
@@ -159,7 +159,8 @@ scholaraio shared-refs A B    共同参考文献分析
 
 **探索与主题**
 ```
-scholaraio explore            文献探索（OpenAlex）
+scholaraio explore fetch ...  文献探索（OpenAlex 多维过滤）
+scholaraio explore search ... 探索库内检索
 scholaraio topics             BERTopic 主题建模
 ```
 
@@ -168,8 +169,10 @@ scholaraio topics             BERTopic 主题建模
 scholaraio import-endnote     从 Endnote 导入
 scholaraio import-zotero      从 Zotero 导入
 scholaraio attach-pdf         为已有论文补充 PDF
-scholaraio export             导出 BibTeX
-scholaraio ws                 工作区管理
+scholaraio export bibtex      导出 BibTeX
+scholaraio ws init NAME       创建工作区
+scholaraio ws add NAME PAPER  添加论文到工作区
+scholaraio ws search NAME Q   工作区内检索
 ```
 
 **维护**
