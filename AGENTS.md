@@ -45,7 +45,7 @@ The above are baseline capabilities. Feel free to combine CLI tools and the codi
 | Module | Function |
 |--------|----------|
 | `config.py` | Configuration loading (YAML multi-layer override + path resolution + API key lookup) |
-| `papers.py` | Paper path helpers (UUID → directory mapping, used by all modules) |
+| `papers.py` | Paper path & metadata helpers (paper_dir/iter_paper_dirs/read_meta/write_meta + UUID generation) |
 | `log.py` | Logging initialization (file + console + session tracking) |
 | `ingest/mineru.py` | PDF → MinerU Markdown (cloud API / local) |
 | `ingest/extractor.py` | Metadata extraction (regex / auto / robust / llm — 4 modes) |
