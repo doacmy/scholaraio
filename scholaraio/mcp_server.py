@@ -34,6 +34,19 @@ _log = logging.getLogger(__name__)
 # ============================================================================
 
 
+_NR_TOPICS_MAP: dict[int, str | None] = {0: "auto", -1: None}
+
+
+def _map_nr_topics(nr_topics: int) -> int | str | None:
+    """Map MCP nr_topics sentinel to the value expected by topics.build_topics.
+
+    0  → "auto"  (automatic topic merging/reduction)
+    -1 → None    (no reduction, keep HDBSCAN clusters as-is)
+    N  → N       (explicit target topic count, passed through)
+    """
+    return _NR_TOPICS_MAP.get(nr_topics, nr_topics)
+
+
 def _get_cfg():
     """Lazy-load config singleton."""
     global _cfg
@@ -608,7 +621,7 @@ def build_topics(
         if not rebuild and (model_dir / "bertopic_model.pkl").exists():
             model = load_model(model_dir)
         else:
-            nr = {0: "auto", -1: None}.get(nr_topics, nr_topics)
+            nr = _map_nr_topics(nr_topics)
             model = _build_topics(
                 cfg.index_db,
                 cfg.papers_dir,
