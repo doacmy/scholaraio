@@ -18,9 +18,9 @@ _mcp_stub = types.ModuleType("mcp")
 _mcp_stub.server = types.ModuleType("mcp.server")
 _mcp_stub.server.fastmcp = types.ModuleType("mcp.server.fastmcp")
 _mcp_stub.server.fastmcp.FastMCP = MagicMock()
-sys.modules.setdefault("mcp", _mcp_stub)
-sys.modules.setdefault("mcp.server", _mcp_stub.server)
-sys.modules.setdefault("mcp.server.fastmcp", _mcp_stub.server.fastmcp)
+sys.modules["mcp"] = _mcp_stub
+sys.modules["mcp.server"] = _mcp_stub.server
+sys.modules["mcp.server.fastmcp"] = _mcp_stub.server.fastmcp
 
 from scholaraio.mcp_server import _map_nr_topics  # noqa: E402
 
