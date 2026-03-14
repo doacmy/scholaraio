@@ -778,7 +778,7 @@ def _process_inbox(
 
     has_pdfs = any(e["pdf"] for e in entries.values())
     office_count = sum(1 for e in entries.values() if e.get("office") and not e["pdf"] and not e["md"])
-    md_only_count = sum(1 for e in entries.values() if not e["pdf"] and not e.get("office"))
+    md_only_count = sum(1 for e in entries.values() if not e["pdf"] and e["md"])
 
     needs_mineru = has_pdfs and "mineru" in inbox_steps
     use_cloud_batch = False
@@ -890,7 +890,7 @@ def _process_inbox(
         elif batch_skip_mineru and long_pdf_stems and stem not in long_pdf_stems:
             file_steps = [s for s in per_file_steps if s != "mineru"]
 
-        # Always inject office_path when present so step_ingest can clean up the source file
+        # Inject office_path for office-only entries (no PDF) so downstream steps can clean up the source file
         file_opts = dict(opts)
         if office_path and not paths["pdf"]:
             file_opts["office_path"] = office_path

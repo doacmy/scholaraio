@@ -313,7 +313,10 @@ def get_formatter(name: str, cfg: Config) -> FormatterFn:
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load style '{name}': import machinery returned no spec/loader for {style_file}")
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    try:
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    except Exception as exc:
+        raise ImportError(f"Cannot load style '{name}' from {style_file}: {exc}") from exc
     if not hasattr(mod, "format_ref"):
         raise AttributeError(f"Style file {style_file} must define a `format_ref(meta, idx)` function.")
     return mod.format_ref
