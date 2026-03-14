@@ -1459,6 +1459,132 @@ def rename_paper(
 
 
 # ============================================================================
+#  federated_search
+# ============================================================================
+
+
+@mcp.tool()
+def federated_search(
+    query: str,
+    scope: str = "main",
+    top_k: int = 10,
+) -> str:
+    """Search across multiple sources: main library, explore silos, and arXiv.
+
+    Args:
+        query: Search query text.
+        scope: Comma-separated list of sources: main / explore:NAME / explore:* / arxiv.
+        top_k: Maximum results per source (default 10).
+    """
+    import xml.etree.ElementTree as ET
+
+    import requests
+
+    cfg = _get_cfg()
+    scopes = [s.strip() for s in scope.split(",") if s.strip()]
+    output: dict[str, list[dict]] = {}
+
+    # Collect main library DOIs for "already in library" annotation
+    main_dois: set[str] = set()
+    try:
+        import sqlite3
+
+        conn = sqlite3.connect(str(cfg.index_db))
+        rows = conn.execute(
+            "SELECT doi FROM papers_registry WHERE doi IS NOT NULL AND doi != ''"
+        ).fetchall()
+        conn.close()
+        main_dois = {r[0].lower() for r in rows}
+    except Exception:
+        pass
+
+    for src in scopes:
+        if src == "main":
+            try:
+                from scholaraio.index import unified_search
+
+                results = unified_search(query, cfg.index_db, top_k=top_k, cfg=cfg)
+                output["main"] = results
+            except FileNotFoundError:
+                output["main"] = [{"error": "index_not_found"}]
+            except Exception as e:
+                output["main"] = [{"error": str(e)}]
+
+        elif src.startswith("explore:"):
+            explore_name = src[len("explore:"):]
+            if explore_name == "*":
+                from scholaraio.explore import list_explore_libs
+
+                names = list_explore_libs(cfg)
+            else:
+                names = [explore_name]
+            for name in names:
+                from scholaraio.explore import _db_path, explore_unified_search
+
+                db = _db_path(name, cfg)
+                if not db.exists():
+                    output[f"explore:{name}"] = [{"error": "db_not_found"}]
+                    continue
+                try:
+                    results = explore_unified_search(name, query, top_k=top_k, cfg=cfg)
+                    output[f"explore:{name}"] = results
+                except Exception as e:
+                    output[f"explore:{name}"] = [{"error": str(e)}]
+
+        elif src == "arxiv":
+            arxiv_results = []
+            try:
+                url = "http://export.arxiv.org/api/query"
+                params = {"search_query": f"all:{query}", "max_results": top_k, "sortBy": "relevance"}
+                resp = requests.get(url, params=params, timeout=10)
+                resp.raise_for_status()
+                ns = {
+                    "atom": "http://www.w3.org/2005/Atom",
+                    "arxiv": "http://arxiv.org/schemas/atom",
+                }
+                root = ET.fromstring(resp.text)
+                for entry in root.findall("atom:entry", ns):
+                    title_el = entry.find("atom:title", ns)
+                    title = title_el.text.strip().replace("\n", " ") if title_el is not None else ""
+                    summary_el = entry.find("atom:summary", ns)
+                    abstract = summary_el.text.strip().replace("\n", " ") if summary_el is not None else ""
+                    year = ""
+                    pub_el = entry.find("atom:published", ns)
+                    if pub_el is not None and pub_el.text:
+                        year = pub_el.text[:4]
+                    authors = []
+                    for author_el in entry.findall("atom:author", ns):
+                        name_el = author_el.find("atom:name", ns)
+                        if name_el is not None and name_el.text:
+                            authors.append(name_el.text)
+                    arxiv_id = ""
+                    id_el = entry.find("atom:id", ns)
+                    if id_el is not None and id_el.text:
+                        arxiv_id = id_el.text.strip().split("/abs/")[-1]
+                    doi = ""
+                    doi_el = entry.find("arxiv:doi", ns)
+                    if doi_el is not None and doi_el.text:
+                        doi = doi_el.text.strip()
+                    in_lib = bool(doi and doi.lower() in main_dois)
+                    arxiv_results.append(
+                        {
+                            "title": title,
+                            "authors": authors,
+                            "year": year,
+                            "abstract": abstract,
+                            "arxiv_id": arxiv_id,
+                            "doi": doi,
+                            "in_main_library": in_lib,
+                        }
+                    )
+            except Exception as e:
+                arxiv_results = [{"error": f"arXiv unavailable: {e}"}]
+            output["arxiv"] = arxiv_results
+
+    return json.dumps(output, ensure_ascii=False)
+
+
+# ============================================================================
 #  Entry point
 # ============================================================================
 

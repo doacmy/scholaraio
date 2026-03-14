@@ -1,8 +1,11 @@
 ---
 name: export
 description: Export papers from the knowledge base to standard citation formats like BibTeX. Supports exporting all papers, specific papers, or filtered by year/journal. Use when the user needs BibTeX entries, reference files, or citation export.
+version: 1.0.0
+author: ZimoLiao/scholaraio
+license: MIT
+tags: ["academic", "bibtex", "citations", "export"]
 ---
-
 # 导出论文
 
 将本地论文库中的论文导出为标准引用格式（BibTeX）。

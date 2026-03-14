@@ -1,8 +1,11 @@
 ---
 name: ingest
 description: Ingest papers from inbox into the knowledge base. Runs the pipeline to convert PDFs via MinerU (auto-splits long PDFs), extract metadata, deduplicate by DOI, and build indexes. Supports three inboxes - regular papers, theses, and general documents. Use when the user has new papers to process, wants to run the pipeline, or rebuild indexes.
+version: 1.0.0
+author: ZimoLiao/scholaraio
+license: MIT
+tags: ["academic", "papers", "pipeline", "pdf"]
 ---
-
 # 入库论文
 
 将 inbox 中的 PDF 论文处理入库，或运行完整的处理流水线。

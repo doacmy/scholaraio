@@ -161,9 +161,13 @@ def cmd_search_author(args: argparse.Namespace, cfg) -> None:
 
 
 def cmd_search(args: argparse.Namespace, cfg) -> None:
+    import time
+
     from scholaraio.index import search
+    from scholaraio.metrics import get_store
 
     query = " ".join(args.query)
+    t0 = time.monotonic()
     try:
         results = search(
             query,
@@ -176,6 +180,21 @@ def cmd_search(args: argparse.Namespace, cfg) -> None:
     except FileNotFoundError as e:
         _log.error("%s", e)
         sys.exit(1)
+
+    elapsed = time.monotonic() - t0
+    store = get_store()
+    if store:
+        store.record(
+            category="search",
+            name="search",
+            duration_s=elapsed,
+            detail={
+                "query": query,
+                "result_count": len(results),
+                "top_dois": [r["doi"] for r in results[:5] if r.get("doi")],
+                "filters": {"year": args.year, "journal": args.journal},
+            },
+        )
 
     if not results:
         ui(f'No results for "{query}".')
@@ -190,6 +209,7 @@ def cmd_search(args: argparse.Namespace, cfg) -> None:
 
 def cmd_show(args: argparse.Namespace, cfg) -> None:
     from scholaraio.loader import load_l1, load_l2, load_l3, load_l4
+    from scholaraio.metrics import get_store
 
     paper_d = _resolve_paper(args.paper_id, cfg)
     json_path = paper_d / "meta.json"
@@ -197,6 +217,18 @@ def cmd_show(args: argparse.Namespace, cfg) -> None:
 
     l1 = load_l1(json_path)
     _print_header(l1)
+
+    store = get_store()
+    if store:
+        store.record(
+            category="read",
+            name=l1.get("paper_id", args.paper_id),
+            detail={
+                "layer": args.layer,
+                "title": l1.get("title", ""),
+                "doi": l1.get("doi", ""),
+            },
+        )
 
     if args.layer == 1:
         return
@@ -244,12 +276,17 @@ def cmd_embed(args: argparse.Namespace, cfg) -> None:
 
 
 def cmd_vsearch(args: argparse.Namespace, cfg) -> None:
+    import time
+
     try:
         from scholaraio.vectors import vsearch
     except ImportError as e:
         _check_import_error(e)
 
+    from scholaraio.metrics import get_store
+
     query = " ".join(args.query)
+    t0 = time.monotonic()
     try:
         results = vsearch(
             query,
@@ -264,6 +301,21 @@ def cmd_vsearch(args: argparse.Namespace, cfg) -> None:
         _log.error("%s", e)
         sys.exit(1)
 
+    elapsed = time.monotonic() - t0
+    store = get_store()
+    if store:
+        store.record(
+            category="search",
+            name="vsearch",
+            duration_s=elapsed,
+            detail={
+                "query": query,
+                "result_count": len(results),
+                "top_dois": [r["doi"] for r in results[:5] if r.get("doi")],
+                "filters": {"year": args.year, "journal": args.journal},
+            },
+        )
+
     if not results:
         ui(f'No results for "{query}".')
         return
@@ -275,9 +327,13 @@ def cmd_vsearch(args: argparse.Namespace, cfg) -> None:
 
 
 def cmd_usearch(args: argparse.Namespace, cfg) -> None:
+    import time
+
     from scholaraio.index import unified_search
+    from scholaraio.metrics import get_store
 
     query = " ".join(args.query)
+    t0 = time.monotonic()
     results = unified_search(
         query,
         cfg.index_db,
@@ -287,6 +343,20 @@ def cmd_usearch(args: argparse.Namespace, cfg) -> None:
         journal=args.journal,
         paper_type=args.paper_type,
     )
+    elapsed = time.monotonic() - t0
+    store = get_store()
+    if store:
+        store.record(
+            category="search",
+            name="usearch",
+            duration_s=elapsed,
+            detail={
+                "query": query,
+                "result_count": len(results),
+                "top_dois": [r["doi"] for r in results[:5] if r.get("doi")],
+                "filters": {"year": args.year, "journal": args.journal},
+            },
+        )
 
     if not results:
         ui(f'No results for "{query}".')
@@ -1337,6 +1407,371 @@ def cmd_ws(args: argparse.Namespace, cfg) -> None:
 
 
 # ============================================================================
+#  fsearch (federated search)
+# ============================================================================
+
+
+def _search_arxiv(query: str, top_k: int) -> list[dict]:
+    """Call arXiv Atom API, return simplified paper dicts."""
+    import xml.etree.ElementTree as ET
+
+    import requests
+
+    url = "http://export.arxiv.org/api/query"
+    params = {"search_query": f"all:{query}", "max_results": top_k, "sortBy": "relevance"}
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+    except Exception as e:
+        _log.warning("arXiv API 不可用: %s", e)
+        return []
+
+    ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        _log.warning("arXiv XML 解析失败: %s", e)
+        return []
+
+    results = []
+    for entry in root.findall("atom:entry", ns):
+        title_el = entry.find("atom:title", ns)
+        title = title_el.text.strip().replace("\n", " ") if title_el is not None else ""
+        summary_el = entry.find("atom:summary", ns)
+        abstract = summary_el.text.strip().replace("\n", " ") if summary_el is not None else ""
+        year = ""
+        published_el = entry.find("atom:published", ns)
+        if published_el is not None and published_el.text:
+            year = published_el.text[:4]
+        authors = []
+        for author_el in entry.findall("atom:author", ns):
+            name_el = author_el.find("atom:name", ns)
+            if name_el is not None and name_el.text:
+                authors.append(name_el.text)
+        arxiv_id = ""
+        id_el = entry.find("atom:id", ns)
+        if id_el is not None and id_el.text:
+            arxiv_id = id_el.text.strip().split("/abs/")[-1]
+        # Extract DOI if available
+        doi = ""
+        doi_el = entry.find("arxiv:doi", ns)
+        if doi_el is not None and doi_el.text:
+            doi = doi_el.text.strip()
+        results.append(
+            {
+                "title": title,
+                "authors": authors,
+                "year": year,
+                "abstract": abstract,
+                "arxiv_id": arxiv_id,
+                "doi": doi,
+            }
+        )
+    return results
+
+
+def _get_main_library_dois(cfg) -> set[str]:
+    """Return the set of DOIs in the main library (from index.db)."""
+    import sqlite3
+
+    db_path = cfg.index_db
+    if not Path(db_path).exists():
+        return set()
+    try:
+        conn = sqlite3.connect(str(db_path))
+        rows = conn.execute("SELECT doi FROM papers_registry WHERE doi IS NOT NULL AND doi != ''").fetchall()
+        conn.close()
+        return {r[0].lower() for r in rows}
+    except Exception:
+        return set()
+
+
+def cmd_fsearch(args: argparse.Namespace, cfg) -> None:
+    query = " ".join(args.query)
+    top_k = args.top or 10
+    scope_str = args.scope or "main"
+    scopes = [s.strip() for s in scope_str.split(",") if s.strip()]
+
+    ui(f'联邦搜索: "{query}"  scope={scope_str}\n')
+
+    main_dois = _get_main_library_dois(cfg)
+
+    for scope in scopes:
+        if scope == "main":
+            ui("── [主库] ──")
+            from scholaraio.index import unified_search
+
+            try:
+                results = unified_search(query, cfg.index_db, top_k=top_k, cfg=cfg)
+            except FileNotFoundError:
+                ui("  主库索引不存在，请先运行 scholaraio index")
+                results = []
+            if not results:
+                ui("  无结果")
+            else:
+                for i, r in enumerate(results, 1):
+                    score = r.get("score", 0.0)
+                    _print_search_result(i, r, extra=f"{r.get('match','?')} {score:.3f}")
+            ui()
+
+        elif scope.startswith("explore:"):
+            explore_name = scope[len("explore:"):]
+            if explore_name == "*":
+                from scholaraio.explore import list_explore_libs
+
+                names = list_explore_libs(cfg)
+            else:
+                names = [explore_name]
+
+            for name in names:
+                ui(f"── [explore: {name}] ──")
+                from scholaraio.explore import _db_path, explore_unified_search
+
+                db = _db_path(name, cfg)
+                if not db.exists():
+                    ui(f"  explore 库 {name} 不存在或未建索引（explore.db 缺失）")
+                    ui()
+                    continue
+                results = explore_unified_search(name, query, top_k=top_k, cfg=cfg)
+                if not results:
+                    ui("  无结果")
+                else:
+                    for i, r in enumerate(results, 1):
+                        authors = r.get("authors", [])
+                        first = authors[0] if authors else "?"
+                        score = r.get("score", 0.0)
+                        ui(f"  [{i}] [{r.get('year','?')}] {r.get('title','')}")
+                        ui(f"       {first} | score: {score:.3f}")
+                        ui()
+
+        elif scope == "arxiv":
+            ui("── [arXiv] ──")
+            arxiv_results = _search_arxiv(query, top_k)
+            if not arxiv_results:
+                ui("  arXiv 不可用或无结果")
+            else:
+                for i, r in enumerate(arxiv_results, 1):
+                    authors = r.get("authors", [])
+                    first = (authors[0] if authors else "?") + (" et al." if len(authors) > 1 else "")
+                    doi = r.get("doi", "")
+                    in_lib = doi and doi.lower() in main_dois
+                    status = "  [已入库]" if in_lib else ""
+                    ui(f"  [{i}] [{r.get('year','?')}] {r.get('title','')}{status}")
+                    ui(f"       {first} | arxiv:{r.get('arxiv_id','')}" + (f" | doi:{doi}" if doi else ""))
+                    ui()
+
+        else:
+            ui(f"  未知 scope: {scope}，支持: main / explore:NAME / explore:* / arxiv")
+
+
+# ============================================================================
+#  insights
+# ============================================================================
+
+
+def cmd_insights(args: argparse.Namespace, cfg) -> None:
+    import json as _json
+    import sqlite3
+    from collections import Counter
+    from datetime import datetime, timedelta, timezone
+
+    from scholaraio.metrics import get_store
+
+    store = get_store()
+    if not store:
+        ui("暂无足够数据（metrics 未初始化）")
+        return
+
+    days = args.days or 30
+    since_dt = datetime.now(timezone.utc) - timedelta(days=days)
+    since_iso = since_dt.isoformat()
+
+    # Fetch search events
+    search_events = store.query(category="search", since=since_iso, limit=10000)
+    # Fetch read events
+    read_events = store.query(category="read", since=since_iso, limit=10000)
+
+    if not search_events and not read_events:
+        ui(f"暂无足够数据（过去 {days} 天内无搜索或阅读记录）")
+        return
+
+    ui(f"=== Research Observatory（过去 {days} 天）===\n")
+
+    # 1. 搜索热词 Top 10
+    _STOPWORDS = {
+        "a", "an", "the", "of", "in", "on", "at", "to", "for", "with", "by", "and",
+        "or", "is", "are", "was", "were", "be", "been", "have", "has", "do", "does",
+        "this", "that", "it", "its", "from", "as", "via", "using", "based",
+    }
+    word_counts: Counter = Counter()
+    for ev in search_events:
+        detail_raw = ev.get("detail") or ""
+        if detail_raw:
+            try:
+                detail = _json.loads(detail_raw)
+                q = detail.get("query", "")
+            except Exception:
+                q = ""
+        else:
+            q = ""
+        if q:
+            for w in q.lower().split():
+                w = w.strip('"\',.:;!?()[]{}')
+                if w and w not in _STOPWORDS and len(w) > 1:
+                    word_counts[w] += 1
+
+    ui("【搜索热词 Top 10】")
+    if word_counts:
+        for word, cnt in word_counts.most_common(10):
+            bar = "█" * min(cnt, 20)
+            ui(f"  {word:<20s} {bar} ({cnt})")
+    else:
+        ui("  暂无搜索记录")
+    ui()
+
+    # 2. 最常阅读论文 Top 10
+    paper_read_counts: Counter = Counter()
+    for ev in read_events:
+        name = ev.get("name", "")
+        if name:
+            paper_read_counts[name] += 1
+
+    ui("【最常阅读论文 Top 10】")
+    if paper_read_counts:
+        # Try to load titles from meta.json
+        papers_dir = cfg.papers_dir
+        for rank, (pid, cnt) in enumerate(paper_read_counts.most_common(10), 1):
+            title = ""
+            # Try dir_name first
+            paper_d = papers_dir / pid
+            meta_path = paper_d / "meta.json"
+            if meta_path.exists():
+                try:
+                    meta = _json.loads(meta_path.read_text("utf-8"))
+                    title = meta.get("title", "")
+                except Exception:
+                    pass
+            if not title:
+                # Check read event detail for title
+                for ev in read_events:
+                    if ev.get("name") == pid and ev.get("detail"):
+                        try:
+                            d = _json.loads(ev["detail"])
+                            title = d.get("title", "")
+                        except Exception:
+                            pass
+                        if title:
+                            break
+            label = title[:60] if title else pid
+            ui(f"  {rank:2d}. [{cnt}次] {label}")
+    else:
+        ui("  暂无阅读记录")
+    ui()
+
+    # 3. 阅读量趋势（按周 ASCII 折线图）
+    ui("【阅读量趋势（按周）】")
+    if read_events:
+        week_counts: Counter = Counter()
+        for ev in read_events:
+            ts = ev.get("timestamp", "")
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    week_key = dt.strftime("%Y-W%W")
+                    week_counts[week_key] += 1
+                except Exception:
+                    pass
+        if week_counts:
+            max_count = max(week_counts.values()) or 1
+            for week in sorted(week_counts):
+                cnt = week_counts[week]
+                bar_len = round(cnt / max_count * 20)
+                bar = "█" * bar_len
+                ui(f"  {week}  {bar} {cnt}")
+        else:
+            ui("  暂无足够数据")
+    else:
+        ui("  暂无阅读记录")
+    ui()
+
+    # 4. 活跃 workspace
+    ws_counts: Counter = Counter()
+    for ev in read_events:
+        detail_raw = ev.get("detail") or ""
+        if detail_raw:
+            try:
+                detail = _json.loads(detail_raw)
+                ws = detail.get("workspace", "")
+                if ws:
+                    ws_counts[ws] += 1
+            except Exception:
+                pass
+    if ws_counts:
+        ui("【活跃工作区】")
+        for ws, cnt in ws_counts.most_common(5):
+            ui(f"  {ws}: {cnt} 次阅读")
+        ui()
+
+    # 5. 推荐"相邻论文"（最近7天阅读的论文的语义邻居，但未阅读过）
+    ui("【推荐：你可能还没读过的邻近论文】")
+    recent_since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    recent_reads = store.query(category="read", since=recent_since, limit=500)
+    recent_paper_ids = list({ev["name"] for ev in recent_reads if ev.get("name")})
+
+    if not recent_paper_ids:
+        ui("  过去7天无阅读记录，无法推荐")
+    else:
+        all_read_pids = {ev["name"] for ev in read_events if ev.get("name")}
+        try:
+            from scholaraio.vectors import vsearch
+
+            candidate_scores: dict[str, float] = {}
+            for pid in recent_paper_ids[:5]:  # limit to avoid slow search
+                paper_d = cfg.papers_dir / pid
+                meta_path = paper_d / "meta.json"
+                if not meta_path.exists():
+                    continue
+                try:
+                    meta = _json.loads(meta_path.read_text("utf-8"))
+                    title = meta.get("title", "")
+                    abstract = meta.get("abstract", "")
+                    query_text = f"{title}\n{abstract}".strip()
+                    if not query_text:
+                        continue
+                except Exception:
+                    continue
+                try:
+                    neighbors = vsearch(query_text, cfg.index_db, top_k=10, cfg=cfg)
+                except Exception:
+                    continue
+                for r in neighbors:
+                    n_pid = r.get("dir_name") or r.get("paper_id", "")
+                    if n_pid and n_pid not in all_read_pids:
+                        score = r.get("score", 0.0)
+                        if n_pid not in candidate_scores or candidate_scores[n_pid] < score:
+                            candidate_scores[n_pid] = score
+            if candidate_scores:
+                sorted_candidates = sorted(candidate_scores.items(), key=lambda x: -x[1])[:5]
+                for rank, (pid, score) in enumerate(sorted_candidates, 1):
+                    title = ""
+                    paper_d = cfg.papers_dir / pid
+                    meta_path = paper_d / "meta.json"
+                    if meta_path.exists():
+                        try:
+                            meta = _json.loads(meta_path.read_text("utf-8"))
+                            title = meta.get("title", "")
+                        except Exception:
+                            pass
+                    label = title[:60] if title else pid
+                    ui(f"  {rank}. {label}  (score: {score:.3f})")
+            else:
+                ui("  未找到合适的邻近论文（可能向量索引未建立）")
+        except ImportError:
+            ui("  语义搜索不可用（需安装 embed 依赖）")
+    ui()
+
+
+# ============================================================================
 #  metrics
 # ============================================================================
 
@@ -2118,6 +2553,23 @@ def main() -> None:
     p_migrate = sub.add_parser("migrate-dirs", help="迁移 data/papers/ 从平铺结构到每篇一目录")
     p_migrate.set_defaults(func=cmd_migrate_dirs)
     p_migrate.add_argument("--execute", action="store_true", help="实际执行迁移（默认 dry-run）")
+
+    # --- fsearch ---
+    p_fsearch = sub.add_parser("fsearch", help="联邦搜索：同时搜索主库、explore 库和 arXiv")
+    p_fsearch.set_defaults(func=cmd_fsearch)
+    p_fsearch.add_argument("query", nargs="+", help="检索词")
+    p_fsearch.add_argument(
+        "--scope",
+        type=str,
+        default="main",
+        help="搜索范围（逗号分隔）：main / explore:NAME / explore:* / arxiv（默认 main）",
+    )
+    p_fsearch.add_argument("--top", type=int, default=None, help="每个来源最多返回 N 条（默认 10）")
+
+    # --- insights ---
+    p_insights = sub.add_parser("insights", help="研究行为分析：搜索热词、最常阅读论文等")
+    p_insights.set_defaults(func=cmd_insights)
+    p_insights.add_argument("--days", type=int, default=30, help="分析最近 N 天的数据（默认 30）")
 
     # --- metrics ---
     p_metrics = sub.add_parser("metrics", help="查看 LLM token 用量和调用统计")
