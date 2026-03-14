@@ -498,6 +498,11 @@ def step_ingest(ctx: InboxCtx) -> StepResult:
     _update_registry(ctx.cfg, ctx.meta, paper_d.name)
 
     _cleanup_inbox(ctx.pdf_path, None, dry_run=False)
+    # Clean up original Office source file (DOCX/XLSX/PPTX) if present
+    office_src: Path | None = ctx.opts.get("office_path")
+    if office_src and office_src.exists():
+        office_src.unlink()
+        _log.debug("deleted office source: %s", office_src.name)
     ctx.ingested_json = new_json
     ctx.status = "ingested"
     return StepResult.OK
@@ -754,14 +759,17 @@ def _process_inbox(
         entries.setdefault(pdf.stem, {"pdf": None, "md": None, "office": None})["pdf"] = pdf
     for md in sorted(inbox_dir.glob("*.md")):
         entries.setdefault(md.stem, {"pdf": None, "md": None, "office": None})["md"] = md
-    # Scan Office files (.docx / .xlsx / .pptx)
-    for ext in _OFFICE_EXTENSIONS:
-        for office_file in sorted(inbox_dir.glob(f"*{ext}")):
-            entries.setdefault(office_file.stem, {"pdf": None, "md": None, "office": None})["office"] = office_file
+    # Scan Office files only when office_convert step is in the pipeline
+    has_office_step = "office_convert" in inbox_steps
+    if has_office_step:
+        for ext in _OFFICE_EXTENSIONS:
+            for office_file in sorted(inbox_dir.glob(f"*{ext}")):
+                entries.setdefault(office_file.stem, {"pdf": None, "md": None, "office": None})["office"] = office_file
 
     if not entries:
         if not is_thesis:
-            ui(f"No PDF, .md, or Office file in inbox: {inbox_dir}")
+            msg = "No PDF, .md, or Office file" if has_office_step else "No PDF or .md file"
+            ui(f"{msg} in inbox: {inbox_dir}")
         return
 
     has_pdfs = any(e["pdf"] for e in entries.values())

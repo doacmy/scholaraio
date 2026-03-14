@@ -293,7 +293,14 @@ def get_formatter(name: str, cfg: Config) -> FormatterFn:
     if name in BUILTIN_STYLES:
         return BUILTIN_STYLES[name]
 
+    import re
+
+    if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+        raise ValueError(f"Invalid style name '{name}': must contain only letters, digits, hyphens, underscores.")
+
     style_file = styles_dir(cfg) / f"{name}.py"
+    if not style_file.resolve().is_relative_to(styles_dir(cfg).resolve()):
+        raise ValueError(f"Invalid style name '{name}': path traversal detected.")
     if not style_file.exists():
         available = ", ".join(s["name"] for s in list_styles(cfg))
         raise FileNotFoundError(

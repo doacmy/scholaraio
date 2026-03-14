@@ -257,57 +257,6 @@ def export_ris(
 # ============================================================================
 
 
-def meta_to_markdown_ref(meta: dict, idx: int | None = None) -> str:
-    """Convert a single meta.json dict to a Markdown reference line.
-
-    Args:
-        meta: Paper metadata dictionary.
-        idx: Optional index number (for numbered lists).
-
-    Returns:
-        Formatted Markdown reference string.
-    """
-    authors = meta.get("authors") or []
-    if authors:
-        if len(authors) == 1:
-            author_str = authors[0]
-        elif len(authors) <= 3:
-            author_str = ", ".join(authors[:-1]) + f", & {authors[-1]}"
-        else:
-            author_str = f"{authors[0]} et al."
-    else:
-        author_str = "Unknown"
-
-    year = meta.get("year") or "n.d."
-    title = meta.get("title") or "Untitled"
-    journal = meta.get("journal") or ""
-    volume = meta.get("volume") or ""
-    issue = meta.get("issue") or ""
-    pages = meta.get("pages") or ""
-    doi = meta.get("doi") or ""
-
-    # Build journal info fragment
-    journal_part = ""
-    if journal:
-        journal_part = f"*{journal}*"
-        if volume:
-            journal_part += f", *{volume}*"
-            if issue:
-                journal_part += f"({issue})"
-        if pages:
-            journal_part += f", {pages}"
-
-    # Build full reference (APA-ish style)
-    ref = f"{author_str} ({year}). {title}."
-    if journal_part:
-        ref += f" {journal_part}."
-    if doi:
-        ref += f" https://doi.org/{doi}"
-
-    prefix = f"{idx}. " if idx is not None else "- "
-    return prefix + ref
-
-
 def export_markdown_refs(
     papers_dir: Path,
     *,
@@ -334,15 +283,15 @@ def export_markdown_refs(
     Returns:
         Markdown string with all matching references.
     """
-    from scholaraio.citation_styles import FormatterFn, _fmt_apa, get_formatter
+    from scholaraio.citation_styles import BUILTIN_STYLES, FormatterFn, get_formatter
     from scholaraio.papers import iter_paper_dirs, parse_year_range, read_meta
 
     fmt_fn: FormatterFn
-    if style == "apa":
-        fmt_fn = _fmt_apa
+    if style in BUILTIN_STYLES:
+        fmt_fn = BUILTIN_STYLES[style]
     else:
         if cfg is None:
-            raise ValueError("cfg is required when style != 'apa'")
+            raise ValueError("cfg is required for custom styles")
         fmt_fn = get_formatter(style, cfg)
 
     year_start, year_end = parse_year_range(year) if year else (None, None)
@@ -390,7 +339,7 @@ def export_docx(
     Args:
         content: Markdown text to convert.
         output_path: Destination ``.docx`` file path.
-        title: Optional document title (added as Heading 1 if provided).
+        title: Optional document title (added as Title style if provided).
 
     Raises:
         ImportError: If ``python-docx`` is not installed.
@@ -455,7 +404,10 @@ def _md_to_docx(doc, content: str) -> None:
             i += 1  # skip closing fence
             if code_lines:
                 p = doc.add_paragraph("\n".join(code_lines))
-                p.style = doc.styles.get("No Spacing", p.style)
+                try:
+                    p.style = doc.styles["No Spacing"]
+                except KeyError:
+                    pass
                 p.runs[0].font.name = "Courier New"
                 p.runs[0].font.size = Pt(10)
             continue
