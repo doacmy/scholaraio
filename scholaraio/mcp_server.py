@@ -1484,18 +1484,6 @@ def federated_search(
     scopes = [s.strip() for s in scope.split(",") if s.strip()]
     output: dict[str, list[dict]] = {}
 
-    # Collect main library DOIs for "already in library" annotation
-    main_dois: set[str] = set()
-    try:
-        import sqlite3
-
-        conn = sqlite3.connect(str(cfg.index_db))
-        rows = conn.execute("SELECT doi FROM papers_registry WHERE doi IS NOT NULL AND doi != ''").fetchall()
-        conn.close()
-        main_dois = {r[0].lower() for r in rows}
-    except Exception:
-        pass
-
     for src in scopes:
         if src == "main":
             try:
@@ -1532,9 +1520,10 @@ def federated_search(
         elif src == "arxiv":
             arxiv_results = []
             try:
-                url = "http://export.arxiv.org/api/query"
+                url = "https://export.arxiv.org/api/query"
                 params = {"search_query": f"all:{query}", "max_results": top_k, "sortBy": "relevance"}
-                resp = requests.get(url, params=params, timeout=10)
+                headers = {"User-Agent": "scholaraio/1.0 (https://github.com/ZimoLiao/scholaraio)"}
+                resp = requests.get(url, params=params, headers=headers, timeout=10)
                 resp.raise_for_status()
                 ns = {
                     "atom": "http://www.w3.org/2005/Atom",
@@ -1563,7 +1552,6 @@ def federated_search(
                     doi_el = entry.find("arxiv:doi", ns)
                     if doi_el is not None and doi_el.text:
                         doi = doi_el.text.strip()
-                    in_lib = bool(doi and doi.lower() in main_dois)
                     arxiv_results.append(
                         {
                             "title": title,
@@ -1572,9 +1560,31 @@ def federated_search(
                             "abstract": abstract,
                             "arxiv_id": arxiv_id,
                             "doi": doi,
-                            "in_main_library": in_lib,
+                            "in_main_library": False,  # annotated below
                         }
                     )
+
+                # Annotate which results are already in the main library.
+                # Query only the DOIs present in this result set to avoid
+                # loading the entire papers_registry on every call.
+                arxiv_dois = [r["doi"].lower() for r in arxiv_results if r.get("doi")]
+                if arxiv_dois and Path(cfg.index_db).exists():
+                    try:
+                        import sqlite3
+
+                        placeholders = ",".join("?" * len(arxiv_dois))
+                        with sqlite3.connect(str(cfg.index_db)) as conn:
+                            rows = conn.execute(
+                                f"SELECT doi FROM papers_registry WHERE doi IN ({placeholders})",
+                                arxiv_dois,
+                            ).fetchall()
+                        in_lib_dois = {r[0].lower() for r in rows}
+                        for r in arxiv_results:
+                            if r.get("doi") and r["doi"].lower() in in_lib_dois:
+                                r["in_main_library"] = True
+                    except Exception:
+                        pass
+
             except Exception as e:
                 arxiv_results = [{"error": f"arXiv unavailable: {e}"}]
             output["arxiv"] = arxiv_results

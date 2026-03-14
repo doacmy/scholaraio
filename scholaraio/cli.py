@@ -192,7 +192,11 @@ def cmd_search(args: argparse.Namespace, cfg) -> None:
                 "query": query,
                 "result_count": len(results),
                 "top_dois": [r["doi"] for r in results[:5] if r.get("doi")],
-                "filters": {"year": args.year, "journal": args.journal},
+                "filters": {
+                    "year": args.year,
+                    "journal": args.journal,
+                    "paper_type": getattr(args, "paper_type", None),
+                },
             },
         )
 
@@ -312,7 +316,11 @@ def cmd_vsearch(args: argparse.Namespace, cfg) -> None:
                 "query": query,
                 "result_count": len(results),
                 "top_dois": [r["doi"] for r in results[:5] if r.get("doi")],
-                "filters": {"year": args.year, "journal": args.journal},
+                "filters": {
+                    "year": args.year,
+                    "journal": args.journal,
+                    "paper_type": getattr(args, "paper_type", None),
+                },
             },
         )
 
@@ -354,7 +362,11 @@ def cmd_usearch(args: argparse.Namespace, cfg) -> None:
                 "query": query,
                 "result_count": len(results),
                 "top_dois": [r["doi"] for r in results[:5] if r.get("doi")],
-                "filters": {"year": args.year, "journal": args.journal},
+                "filters": {
+                    "year": args.year,
+                    "journal": args.journal,
+                    "paper_type": getattr(args, "paper_type", None),
+                },
             },
         )
 
@@ -1417,10 +1429,11 @@ def _search_arxiv(query: str, top_k: int) -> list[dict]:
 
     import requests
 
-    url = "http://export.arxiv.org/api/query"
+    url = "https://export.arxiv.org/api/query"
     params = {"search_query": f"all:{query}", "max_results": top_k, "sortBy": "relevance"}
+    headers = {"User-Agent": "scholaraio/1.0 (https://github.com/ZimoLiao/scholaraio)"}
     try:
-        resp = requests.get(url, params=params, timeout=10)
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
         resp.raise_for_status()
     except Exception as e:
         _log.warning("arXiv API 不可用: %s", e)
@@ -1720,25 +1733,7 @@ def cmd_insights(args: argparse.Namespace, cfg) -> None:
         ui("  暂无阅读记录")
     ui()
 
-    # 4. 活跃 workspace
-    ws_counts: Counter = Counter()
-    for ev in read_events:
-        detail_raw = ev.get("detail") or ""
-        if detail_raw:
-            try:
-                detail = _json.loads(detail_raw)
-                ws = detail.get("workspace", "")
-                if ws:
-                    ws_counts[ws] += 1
-            except Exception:
-                pass
-    if ws_counts:
-        ui("【活跃工作区】")
-        for ws, cnt in ws_counts.most_common(5):
-            ui(f"  {ws}: {cnt} 次阅读")
-        ui()
-
-    # 5. 推荐"相邻论文"（最近7天阅读的论文的语义邻居，但未阅读过）
+    # 4. 推荐"相邻论文"（最近7天阅读的论文的语义邻居，但未阅读过）
     ui("【推荐：你可能还没读过的邻近论文】")
     recent_since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     recent_reads = store.query(category="read", since=recent_since, limit=500)
