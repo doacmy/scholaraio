@@ -46,7 +46,8 @@ claude    # 在项目目录启动 Claude Code，开始对话
 
 |  | 功能 | 说明 |
 |--|------|------|
-| **PDF 解析** | 深度结构提取 | [MinerU](https://github.com/opendatalab/MinerU) → Markdown，图表、公式完整保留。支持期刊论文、学位论文、技术报告；超长 PDF（>100 页）自动切分合并 |
+| **PDF 解析** | 深度结构提取 | [MinerU](https://github.com/opendatalab/MinerU) → Markdown，图表、公式完整保留。超长 PDF（>100 页）自动切分合并 |
+| **不只是论文** | 各种文档都能入 | 期刊论文、学位论文、技术报告、标准、讲义——三种 inbox 分类入库，各有针对性的元数据处理 |
 | **融合检索** | 关键词 + 语义 | FTS5 + Qwen3 嵌入 + FAISS → RRF 排序融合 |
 | **主题发现** | 自动聚类 | BERTopic + 6 种交互式 HTML 可视化——同时支持主库和 explore 数据集 |
 | **文献探索** | 多维度发现 | OpenAlex 9 维过滤（期刊、概念、作者、机构、关键词、来源类型、年份、引用量、文献类型）→ 向量化 → 聚类 → 检索 |

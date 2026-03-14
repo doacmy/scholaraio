@@ -46,7 +46,8 @@ claude    # Launch Claude Code in the project directory — that's it
 
 |  | Feature | Details |
 |--|---------|---------|
-| **PDF Parsing** | Deep structure extraction | [MinerU](https://github.com/opendatalab/MinerU) → Markdown with figures, tables, LaTeX equations preserved. Papers, theses, technical reports all supported; long PDFs (>100 pp) auto-split and merged |
+| **PDF Parsing** | Deep structure extraction | [MinerU](https://github.com/opendatalab/MinerU) → Markdown with figures, tables, LaTeX equations preserved. Long PDFs (>100 pp) auto-split and merged |
+| **Not Just Papers** | Any document goes in | Journal articles, theses, technical reports, standards, lecture notes — three inboxes for different document types, each with tailored metadata handling |
 | **Hybrid Search** | Keyword + semantic fusion | FTS5 + Qwen3 embeddings + FAISS → RRF ranking |
 | **Topic Discovery** | Auto-clustering | BERTopic + 6 interactive HTML visualizations — works on both your library and explore datasets |
 | **Literature Exploration** | Multi-dimensional discovery | OpenAlex with 9 filter dimensions (journal, concept, author, institution, keyword, source type, year, citations, work type) → embed → cluster → search |
