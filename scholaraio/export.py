@@ -311,24 +311,39 @@ def meta_to_markdown_ref(meta: dict, idx: int | None = None) -> str:
 def export_markdown_refs(
     papers_dir: Path,
     *,
+    cfg=None,
     paper_ids: list[str] | None = None,
     year: str | None = None,
     journal: str | None = None,
     numbered: bool = True,
+    style: str = "apa",
 ) -> str:
     """Export papers as a Markdown reference list.
 
     Args:
         papers_dir: Root papers directory.
+        cfg: Config object (required when style != "apa").
         paper_ids: Specific paper dir names to export. None = all.
         year: Year filter (e.g. "2023", "2020-2024").
         journal: Journal name filter (case-insensitive substring).
         numbered: Use numbered list (default True); False for bullet list.
+        style: Citation style name. Built-in: "apa", "vancouver",
+            "chicago-author-date", "mla". Custom styles are loaded from
+            data/citation_styles/<name>.py. Default: "apa".
 
     Returns:
         Markdown string with all matching references.
     """
     from scholaraio.papers import iter_paper_dirs, parse_year_range, read_meta
+
+    # Resolve formatter — cfg required for custom styles
+    if style == "apa":
+        from scholaraio.citation_styles import _fmt_apa as fmt_fn
+    else:
+        if cfg is None:
+            raise ValueError("cfg is required when style != 'apa'")
+        from scholaraio.citation_styles import get_formatter
+        fmt_fn = get_formatter(style, cfg)
 
     year_start, year_end = parse_year_range(year) if year else (None, None)
 
@@ -350,7 +365,7 @@ def export_markdown_refs(
 
     lines: list[str] = []
     for i, meta in enumerate(metas, 1):
-        lines.append(meta_to_markdown_ref(meta, idx=i if numbered else None))
+        lines.append(fmt_fn(meta, idx=i if numbered else None))
 
     return "\n".join(lines) + "\n" if lines else ""
 

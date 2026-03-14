@@ -1182,13 +1182,21 @@ def _cmd_export_markdown(args: argparse.Namespace, cfg) -> None:
         _log.error("请指定论文 ID 或 --all")
         sys.exit(1)
 
-    md = export_markdown_refs(
-        cfg.papers_dir,
-        paper_ids=paper_ids,
-        year=args.year,
-        journal=args.journal,
-        numbered=not args.bullet,
-    )
+    style = getattr(args, "style", "apa") or "apa"
+
+    try:
+        md = export_markdown_refs(
+            cfg.papers_dir,
+            cfg=cfg,
+            paper_ids=paper_ids,
+            year=args.year,
+            journal=args.journal,
+            numbered=not args.bullet,
+            style=style,
+        )
+    except FileNotFoundError as e:
+        _log.error("%s", e)
+        sys.exit(1)
 
     if not md:
         ui("未找到匹配的论文")
@@ -1198,9 +1206,45 @@ def _cmd_export_markdown(args: argparse.Namespace, cfg) -> None:
         out = Path(args.output)
         out.write_text(md, encoding="utf-8")
         count = md.count("\n")
-        ui(f"已导出到 {out}（{count} 条引用）")
+        ui(f"已导出到 {out}（{count} 条引用，{style} 格式）")
     else:
         print(md)
+
+
+def cmd_style(args: argparse.Namespace, cfg) -> None:
+    """Dispatcher for `scholaraio style` subcommands."""
+    sub = getattr(args, "style_sub", None)
+    if sub == "list":
+        _cmd_style_list(args, cfg)
+    elif sub == "show":
+        _cmd_style_show(args, cfg)
+    else:
+        _log.error("请指定 style 子命令: list / show")
+        sys.exit(1)
+
+
+def _cmd_style_list(args: argparse.Namespace, cfg) -> None:
+    from scholaraio.citation_styles import list_styles
+
+    styles = list_styles(cfg)
+    ui(f"可用引用格式（共 {len(styles)} 种）：")
+    for s in styles:
+        tag = f"[{s['source']}]"
+        desc = f" — {s['description']}" if s.get("description") else ""
+        print(f"  {s['name']:<28} {tag:<10}{desc}")
+    print()
+    ui("用法：scholaraio export markdown --all --style <name>")
+
+
+def _cmd_style_show(args: argparse.Namespace, cfg) -> None:
+    from scholaraio.citation_styles import show_style
+
+    try:
+        code = show_style(args.name, cfg)
+        print(code)
+    except FileNotFoundError as e:
+        _log.error("%s", e)
+        sys.exit(1)
 
 
 def _cmd_export_docx(args: argparse.Namespace, cfg) -> None:
@@ -2139,6 +2183,7 @@ def main() -> None:
     p_em.add_argument("--year", type=str, default=None, help="年份过滤：2023 / 2020-2024")
     p_em.add_argument("--journal", type=str, default=None, help="期刊名过滤（模糊匹配）")
     p_em.add_argument("--bullet", action="store_true", help="使用无序列表（默认有序）")
+    p_em.add_argument("--style", type=str, default="apa", help="引用格式：apa（默认）/ vancouver / chicago-author-date / mla / <自定义>")
     p_em.add_argument("-o", "--output", type=str, default=None, help="输出文件路径（省略则输出到屏幕）")
 
     p_ed = p_export_sub.add_parser("docx", help="将 Markdown 文本导出为 Word DOCX 文件")
@@ -2235,6 +2280,17 @@ def main() -> None:
     p_metrics.add_argument("--category", default="llm", help="事件类别（llm/api/step，默认 llm）")
     p_metrics.add_argument("--since", default=None, help="起始时间（ISO 格式，如 2026-03-01）")
     p_metrics.add_argument("--summary", action="store_true", help="仅显示汇总统计")
+
+    # --- style ---
+    p_style = sub.add_parser("style", help="引用格式管理（列出 / 查看自定义格式）")
+    p_style.set_defaults(func=cmd_style)
+    p_style_sub = p_style.add_subparsers(dest="style_sub", required=True)
+
+    p_style_list = p_style_sub.add_parser("list", help="列出所有可用引用格式")
+    del p_style_list  # no extra args needed
+
+    p_style_show = p_style_sub.add_parser("show", help="查看引用格式的格式化函数代码")
+    p_style_show.add_argument("name", help="格式名称，如 jcp / apa / vancouver")
 
     # --- enrich-l3 ---
     p_l3 = sub.add_parser("enrich-l3", help="LLM 提取结论段写入 JSON")

@@ -1,0 +1,320 @@
+"""Citation style management for Markdown reference export.
+
+Built-in styles: apa, vancouver, chicago-author-date, mla
+Custom styles: loaded dynamically from data/citation_styles/<name>.py
+
+Formatter interface (every style file must implement):
+
+    def format_ref(meta: dict, idx: int | None = None) -> str:
+        '''Return a single formatted reference line (Markdown).
+
+        Args:
+            meta: Paper metadata dict (title, authors, year, journal,
+                  volume, issue, pages, doi, publisher, paper_type, ...)
+            idx: 1-based index for numbered lists; None for bullet lists.
+        Returns:
+            Formatted reference string, e.g. "1. Smith et al. (2023). ..."
+        '''
+
+Agent workflow for fetching a new style
+----------------------------------------
+1. Agent calls ``scholaraio style list`` — if target style missing, proceed.
+2. Agent fetches the journal's official citation guide or CSL file:
+   - CSL repo (10,000+ styles):
+     https://raw.githubusercontent.com/citation-style-language/styles/master/<slug>.csl
+   - Journal instructions page (Google: "<journal name> citation style guide")
+3. Agent writes a Python formatter file to data/citation_styles/<name>.py
+   following the interface above.
+4. Agent runs ``scholaraio export markdown --all --style <name>``
+5. Style is now cached; future calls skip steps 1-3.
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from scholaraio.config import Config
+
+FormatterFn = Callable[[dict, "int | None"], str]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Built-in styles
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _fmt_apa(meta: dict, idx: int | None = None) -> str:
+    """APA 7th edition (author-date, ampersand, italicised journal+volume)."""
+    authors = meta.get("authors") or []
+    if len(authors) == 1:
+        author_str = authors[0]
+    elif len(authors) <= 3:
+        author_str = ", ".join(authors[:-1]) + f", & {authors[-1]}"
+    elif authors:
+        author_str = f"{authors[0]} et al."
+    else:
+        author_str = "Unknown"
+
+    year = meta.get("year") or "n.d."
+    title = meta.get("title") or "Untitled"
+    journal = meta.get("journal") or ""
+    volume = meta.get("volume") or ""
+    issue = meta.get("issue") or ""
+    pages = meta.get("pages") or ""
+    doi = meta.get("doi") or ""
+
+    journal_part = ""
+    if journal:
+        journal_part = f"*{journal}*"
+        if volume:
+            journal_part += f", *{volume}*"
+            if issue:
+                journal_part += f"({issue})"
+        if pages:
+            journal_part += f", {pages}"
+
+    ref = f"{author_str} ({year}). {title}."
+    if journal_part:
+        ref += f" {journal_part}."
+    if doi:
+        ref += f" https://doi.org/{doi}"
+
+    prefix = f"{idx}. " if idx is not None else "- "
+    return prefix + ref
+
+
+def _fmt_vancouver(meta: dict, idx: int | None = None) -> str:
+    """Vancouver / ICMJE numbered style (used by most biomedical journals)."""
+    authors = meta.get("authors") or []
+
+    def _initials(name: str) -> str:
+        parts = name.split(",", 1)
+        if len(parts) == 2:
+            last, first = parts[0].strip(), parts[1].strip()
+            initials = "".join(w[0] for w in first.split() if w)
+            return f"{last} {initials}"
+        return name
+
+    if len(authors) <= 6:
+        author_str = ", ".join(_initials(a) for a in authors)
+    elif authors:
+        author_str = ", ".join(_initials(a) for a in authors[:6]) + ", et al"
+    else:
+        author_str = "Unknown"
+
+    year = meta.get("year") or "n.d."
+    title = meta.get("title") or "Untitled"
+    journal = meta.get("journal") or ""
+    volume = meta.get("volume") or ""
+    issue = meta.get("issue") or ""
+    pages = meta.get("pages") or ""
+    doi = meta.get("doi") or ""
+
+    ref = f"{author_str}. {title}."
+    if journal:
+        ref += f" {journal}."
+    if year:
+        ref += f" {year}"
+    if volume:
+        ref += f";{volume}"
+    if issue:
+        ref += f"({issue})"
+    if pages:
+        ref += f":{pages}"
+    ref = ref.rstrip(";:") + "."
+    if doi:
+        ref += f" doi:{doi}"
+
+    prefix = f"{idx}. " if idx is not None else "- "
+    return prefix + ref
+
+
+def _fmt_chicago_author_date(meta: dict, idx: int | None = None) -> str:
+    """Chicago 17th ed. Author-Date (common in humanities/social sciences)."""
+    authors = meta.get("authors") or []
+
+    def _chicago_author(name: str, first: bool) -> str:
+        # First author: Last, First; subsequent: First Last
+        parts = name.split(",", 1)
+        if len(parts) == 2:
+            last, given = parts[0].strip(), parts[1].strip()
+            return f"{last}, {given}" if first else f"{given} {last}"
+        return name
+
+    if len(authors) == 1:
+        author_str = _chicago_author(authors[0], first=True)
+    elif len(authors) <= 3:
+        formatted = [_chicago_author(authors[0], first=True)]
+        formatted += [_chicago_author(a, first=False) for a in authors[1:]]
+        author_str = ", ".join(formatted[:-1]) + f", and {formatted[-1]}"
+    elif authors:
+        author_str = _chicago_author(authors[0], first=True).rstrip(".") + " et al."
+    else:
+        author_str = "Unknown"
+
+    year = meta.get("year") or "n.d."
+    title = meta.get("title") or "Untitled"
+    journal = meta.get("journal") or ""
+    volume = meta.get("volume") or ""
+    issue = meta.get("issue") or ""
+    pages = meta.get("pages") or ""
+    doi = meta.get("doi") or ""
+
+    ref = f'{author_str.rstrip(".")}. {year}. "{title}."'
+    if journal:
+        ref += f" *{journal}*"
+    if volume:
+        ref += f" {volume}"
+    if issue:
+        ref += f" ({issue})"
+    if pages:
+        ref += f": {pages}"
+    ref = ref.rstrip(":") + "."
+    if doi:
+        ref += f" https://doi.org/{doi}"
+
+    prefix = f"{idx}. " if idx is not None else "- "
+    return prefix + ref
+
+
+def _fmt_mla(meta: dict, idx: int | None = None) -> str:
+    """MLA 9th edition (humanities, container model)."""
+    authors = meta.get("authors") or []
+
+    def _mla_author(name: str, reverse: bool) -> str:
+        parts = name.split(",", 1)
+        if len(parts) == 2:
+            last, given = parts[0].strip(), parts[1].strip()
+            return f"{last}, {given}" if reverse else f"{given} {last}"
+        return name
+
+    if len(authors) == 1:
+        author_str = _mla_author(authors[0], reverse=True)
+    elif len(authors) == 2:
+        author_str = f"{_mla_author(authors[0], reverse=True)}, and {_mla_author(authors[1], reverse=False)}"
+    elif authors:
+        author_str = _mla_author(authors[0], reverse=True).rstrip(".") + ", et al."
+    else:
+        author_str = "Unknown"
+
+    title = meta.get("title") or "Untitled"
+    journal = meta.get("journal") or ""
+    volume = meta.get("volume") or ""
+    issue = meta.get("issue") or ""
+    year = meta.get("year") or "n.d."
+    pages = meta.get("pages") or ""
+    doi = meta.get("doi") or ""
+
+    ref = f'{author_str.rstrip(".")}. "{title}."'
+    if journal:
+        ref += f" *{journal}*"
+    if volume:
+        ref += f", vol. {volume}"
+    if issue:
+        ref += f", no. {issue}"
+    if year:
+        ref += f", {year}"
+    if pages:
+        ref += f", pp. {pages}"
+    ref = ref.rstrip(",") + "."
+    if doi:
+        ref += f" https://doi.org/{doi}"
+
+    prefix = f"{idx}. " if idx is not None else "- "
+    return prefix + ref
+
+
+BUILTIN_STYLES: dict[str, FormatterFn] = {
+    "apa": _fmt_apa,
+    "vancouver": _fmt_vancouver,
+    "chicago-author-date": _fmt_chicago_author_date,
+    "mla": _fmt_mla,
+}
+
+# Human-readable descriptions shown in `style list`
+BUILTIN_DESCRIPTIONS: dict[str, str] = {
+    "apa": "APA 7th edition (author-date) — default",
+    "vancouver": "Vancouver / ICMJE numbered (biomedical journals)",
+    "chicago-author-date": "Chicago 17th Author-Date (humanities/social sciences)",
+    "mla": "MLA 9th edition (humanities, container model)",
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dynamic cache loading
+# ─────────────────────────────────────────────────────────────────────────────
+
+def styles_dir(cfg: "Config") -> Path:
+    """Return the citation styles cache directory (data/citation_styles/)."""
+    return cfg.papers_dir.parent / "citation_styles"
+
+
+def list_styles(cfg: "Config") -> list[dict]:
+    """Return all available styles as a list of dicts with name/source/description."""
+    results = []
+    for name, desc in BUILTIN_DESCRIPTIONS.items():
+        results.append({"name": name, "source": "built-in", "description": desc})
+
+    d = styles_dir(cfg)
+    if d.exists():
+        for py_file in sorted(d.glob("*.py")):
+            name = py_file.stem
+            if name in BUILTIN_STYLES:
+                continue  # don't shadow built-ins
+            meta_file = d / f"{name}.json"
+            desc = ""
+            source = "custom"
+            if meta_file.exists():
+                try:
+                    m = json.loads(meta_file.read_text(encoding="utf-8"))
+                    desc = m.get("description", "")
+                    source = m.get("source", "custom")
+                except Exception:
+                    pass
+            results.append({"name": name, "source": source, "description": desc})
+
+    return results
+
+
+def get_formatter(name: str, cfg: "Config") -> FormatterFn:
+    """Load a formatter by style name.
+
+    Checks built-in styles first, then cache at data/citation_styles/<name>.py.
+
+    Raises:
+        FileNotFoundError: If the style is not found anywhere.
+    """
+    if name in BUILTIN_STYLES:
+        return BUILTIN_STYLES[name]
+
+    style_file = styles_dir(cfg) / f"{name}.py"
+    if not style_file.exists():
+        available = ", ".join(s["name"] for s in list_styles(cfg))
+        raise FileNotFoundError(
+            f"Citation style '{name}' not found.\n"
+            f"Available: {available}\n"
+            f"To add a new style, ask the agent: '帮我获取 {name} 的引用格式'"
+        )
+
+    spec = importlib.util.spec_from_file_location(f"_csl_{name}", style_file)
+    mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    if not hasattr(mod, "format_ref"):
+        raise AttributeError(
+            f"Style file {style_file} must define a `format_ref(meta, idx)` function."
+        )
+    return mod.format_ref
+
+
+def show_style(name: str, cfg: "Config") -> str:
+    """Return the source code of a custom style, or description for built-ins."""
+    if name in BUILTIN_STYLES:
+        desc = BUILTIN_DESCRIPTIONS.get(name, "")
+        return f"# Built-in style: {name}\n# {desc}\n# (implemented in scholaraio/citation_styles.py)"
+
+    style_file = styles_dir(cfg) / f"{name}.py"
+    if not style_file.exists():
+        raise FileNotFoundError(f"Style '{name}' not found.")
+    return style_file.read_text(encoding="utf-8")
