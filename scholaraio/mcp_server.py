@@ -1484,16 +1484,17 @@ def federated_search(
 
     for src in scopes:
         if src == "main":
-            try:
-                from scholaraio.index import unified_search
-
-                results = unified_search(query, cfg.index_db, top_k=top_k, cfg=cfg)
-                output["main"] = results
-            except FileNotFoundError:
+            if not Path(cfg.index_db).exists():
                 output["main"] = [{"error": "index_not_found", "message": "Index not built. Run: scholaraio index"}]
-            except Exception as e:
-                _log.exception("federated_search main error")
-                output["main"] = [{"error": "internal", "message": str(e)}]
+            else:
+                try:
+                    from scholaraio.index import unified_search
+
+                    results = unified_search(query, cfg.index_db, top_k=top_k, cfg=cfg)
+                    output["main"] = results
+                except Exception as e:
+                    _log.exception("federated_search main error")
+                    output["main"] = [{"error": "internal", "message": str(e)}]
 
         elif src.startswith("explore:"):
             explore_name = src[len("explore:") :]

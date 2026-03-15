@@ -26,10 +26,19 @@ _ARXIV_PAPER = {
 }
 
 
-def _make_cfg(tmp_path: Path) -> MagicMock:
+def _make_cfg(tmp_path: Path, *, create_db: bool = False) -> MagicMock:
+    """Build a minimal config mock.
+
+    Args:
+        tmp_path: pytest tmp_path fixture directory.
+        create_db: Touch index.db so existence checks pass (needed for tests
+            that mock unified_search but still expect it to be called).
+    """
     cfg = MagicMock()
     cfg.index_db = tmp_path / "index.db"
     cfg.papers_dir = tmp_path / "papers"
+    if create_db:
+        cfg.index_db.touch()
     return cfg
 
 
@@ -40,7 +49,7 @@ def _make_cfg(tmp_path: Path) -> MagicMock:
 
 class TestFederatedSearchMain:
     def test_main_returns_results(self, tmp_path):
-        cfg = _make_cfg(tmp_path)
+        cfg = _make_cfg(tmp_path, create_db=True)
         with (
             patch("scholaraio.mcp_server._get_cfg", return_value=cfg),
             patch("scholaraio.index.unified_search", return_value=[_MAIN_PAPER]) as mock_us,
@@ -54,11 +63,11 @@ class TestFederatedSearchMain:
         mock_us.assert_called_once()
 
     def test_main_index_not_found(self, tmp_path):
-        cfg = _make_cfg(tmp_path)
-        with (
-            patch("scholaraio.mcp_server._get_cfg", return_value=cfg),
-            patch("scholaraio.index.unified_search", side_effect=FileNotFoundError),
-        ):
+        # cfg.index_db points at a non-existent file — exercises the real
+        # existence check in federated_search (unified_search is NOT mocked,
+        # so the test verifies actual production behavior).
+        cfg = _make_cfg(tmp_path)  # create_db=False: index.db does not exist
+        with patch("scholaraio.mcp_server._get_cfg", return_value=cfg):
             from scholaraio.mcp_server import federated_search
 
             result = json.loads(federated_search("attention", scope="main"))
@@ -67,7 +76,7 @@ class TestFederatedSearchMain:
         assert "message" in result["main"][0]
 
     def test_main_generic_error(self, tmp_path):
-        cfg = _make_cfg(tmp_path)
+        cfg = _make_cfg(tmp_path, create_db=True)
         with (
             patch("scholaraio.mcp_server._get_cfg", return_value=cfg),
             patch("scholaraio.index.unified_search", side_effect=RuntimeError("boom")),
@@ -182,7 +191,7 @@ class TestFederatedSearchArxiv:
 
 class TestFederatedSearchMultiScope:
     def test_multi_scope_keys_present(self, tmp_path):
-        cfg = _make_cfg(tmp_path)
+        cfg = _make_cfg(tmp_path, create_db=True)
         with (
             patch("scholaraio.mcp_server._get_cfg", return_value=cfg),
             patch("scholaraio.index.unified_search", return_value=[_MAIN_PAPER]),
@@ -196,7 +205,7 @@ class TestFederatedSearchMultiScope:
         assert "arxiv" in result
 
     def test_output_is_valid_json(self, tmp_path):
-        cfg = _make_cfg(tmp_path)
+        cfg = _make_cfg(tmp_path, create_db=True)
         with (
             patch("scholaraio.mcp_server._get_cfg", return_value=cfg),
             patch("scholaraio.index.unified_search", return_value=[_MAIN_PAPER]),
@@ -220,7 +229,7 @@ class TestFederatedSearchMultiScope:
         assert "message" in result["bogus"][0]
 
     def test_empty_scope_falls_back_to_main(self, tmp_path):
-        cfg = _make_cfg(tmp_path)
+        cfg = _make_cfg(tmp_path, create_db=True)
         with (
             patch("scholaraio.mcp_server._get_cfg", return_value=cfg),
             patch("scholaraio.index.unified_search", return_value=[_MAIN_PAPER]),
@@ -232,7 +241,7 @@ class TestFederatedSearchMultiScope:
         assert "main" in result
 
     def test_comma_only_scope_falls_back_to_main(self, tmp_path):
-        cfg = _make_cfg(tmp_path)
+        cfg = _make_cfg(tmp_path, create_db=True)
         with (
             patch("scholaraio.mcp_server._get_cfg", return_value=cfg),
             patch("scholaraio.index.unified_search", return_value=[_MAIN_PAPER]),

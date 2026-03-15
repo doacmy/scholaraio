@@ -1451,20 +1451,24 @@ def cmd_fsearch(args: argparse.Namespace, cfg) -> None:
     query = " ".join(args.query)
     top_k = args.top or 10
     scope_str = args.scope or "main"
-    scopes = [s.strip() for s in scope_str.split(",") if s.strip()]
+    scopes = [s.strip() for s in scope_str.split(",") if s.strip()] or ["main"]
 
     ui(f'联邦搜索: "{query}"  scope={scope_str}\n')
 
     for scope in scopes:
         if scope == "main":
             ui("── [主库] ──")
-            from scholaraio.index import unified_search
-
-            try:
-                results = unified_search(query, cfg.index_db, top_k=top_k, cfg=cfg)
-            except FileNotFoundError:
+            if not cfg.index_db.exists():
                 ui("  主库索引不存在，请先运行 scholaraio index")
                 results = []
+            else:
+                from scholaraio.index import unified_search
+
+                try:
+                    results = unified_search(query, cfg.index_db, top_k=top_k, cfg=cfg)
+                except Exception as e:
+                    ui(f"  主库搜索失败：{e}")
+                    results = []
             if not results:
                 ui("  无结果")
             else:
@@ -1561,7 +1565,7 @@ def cmd_insights(args: argparse.Namespace, cfg) -> None:
         ui(f"暂无足够数据（过去 {days} 天内无搜索或阅读记录）")
         return
 
-    ui(f"=== Research Observatory（过去 {days} 天）===\n")
+    ui(f"=== 科研行为分析（过去 {days} 天）===\n")
 
     # 1. 搜索热词 Top 10
     _STOPWORDS = {
