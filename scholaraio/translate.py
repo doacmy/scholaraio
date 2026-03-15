@@ -1,0 +1,320 @@
+"""
+translate.py — 论文 Markdown 自动翻译
+======================================
+
+将非目标语言的论文 Markdown 翻译为目标语言（默认中文），
+保留 LaTeX 公式、代码块、图片引用和 Markdown 格式。
+
+翻译结果保存为 ``paper_{lang}.md``（如 ``paper_zh.md``），
+原文 ``paper.md`` 保持不变。
+
+用法：
+    from scholaraio.translate import translate_paper, batch_translate
+    translate_paper(paper_dir, config)
+    batch_translate(papers_dir, config)
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from scholaraio.config import Config
+
+_log = logging.getLogger(__name__)
+
+# Language name mapping for prompts
+_LANG_NAMES = {
+    "zh": "中文",
+    "en": "English",
+    "ja": "日本語",
+    "ko": "한국어",
+    "de": "Deutsch",
+    "fr": "Français",
+    "es": "Español",
+}
+
+# ============================================================================
+#  Language detection (lightweight heuristic, no extra dependency)
+# ============================================================================
+
+# CJK Unicode ranges
+_CJK_RE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf]")
+_HANGUL_RE = re.compile(r"[\uac00-\ud7af]")
+_KANA_RE = re.compile(r"[\u3040-\u309f\u30a0-\u30ff]")
+
+
+def detect_language(text: str) -> str:
+    """Detect the primary language of text using character-class heuristics.
+
+    Args:
+        text: Input text (first ~2000 chars are examined).
+
+    Returns:
+        ISO 639-1 code: ``"zh"``, ``"ja"``, ``"ko"``, or ``"en"`` (default).
+    """
+    sample = text[:2000]
+    # Strip code blocks and LaTeX to avoid false positives
+    sample = re.sub(r"```[\s\S]*?```", "", sample)
+    sample = re.sub(r"\$\$[\s\S]*?\$\$", "", sample)
+    sample = re.sub(r"\$[^$]+\$", "", sample)
+
+    cjk_count = len(_CJK_RE.findall(sample))
+    hangul_count = len(_HANGUL_RE.findall(sample))
+    kana_count = len(_KANA_RE.findall(sample))
+
+    total_alpha = sum(1 for c in sample if c.isalpha())
+    if total_alpha == 0:
+        return "en"
+
+    if cjk_count / total_alpha > 0.15:
+        if kana_count > cjk_count * 0.1:
+            return "ja"
+        return "zh"
+    if hangul_count / total_alpha > 0.15:
+        return "ko"
+    return "en"
+
+
+# ============================================================================
+#  Chunking (preserve markdown structure)
+# ============================================================================
+
+# Patterns for blocks that should NOT be translated
+_CODE_BLOCK_RE = re.compile(r"(```[\s\S]*?```)", re.MULTILINE)
+_DISPLAY_MATH_RE = re.compile(r"(\$\$[\s\S]*?\$\$)", re.MULTILINE)
+_IMAGE_RE = re.compile(r"(!\[.*?\]\(.*?\))")
+
+
+def _split_into_chunks(text: str, chunk_size: int) -> list[str]:
+    """Split markdown text into translatable chunks respecting structure.
+
+    Splits on paragraph boundaries (double newlines) and tries to keep
+    chunks under ``chunk_size`` characters. Code blocks and display math
+    are kept intact within their chunks.
+
+    Args:
+        text: Full markdown text.
+        chunk_size: Target maximum chunk size in characters.
+
+    Returns:
+        List of text chunks.
+    """
+    paragraphs = re.split(r"\n{2,}", text)
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    for para in paragraphs:
+        para_len = len(para)
+        if current_len + para_len > chunk_size and current:
+            chunks.append("\n\n".join(current))
+            current = []
+            current_len = 0
+        current.append(para)
+        current_len += para_len + 2  # +2 for \n\n
+
+    if current:
+        chunks.append("\n\n".join(current))
+
+    return chunks
+
+
+# ============================================================================
+#  Translation via LLM
+# ============================================================================
+
+_TRANSLATE_PROMPT = """\
+翻译以下学术论文段落至{target_lang}。
+
+重要事项：
+- 保留所有 markdown 格式（#, **, ``, [links]、表格等）
+- 保留 LaTeX 公式（$...$, $$...$$）不翻译
+- 保留代码块（```...```）不翻译
+- 保留图片引用（![...](...））不翻译
+- 保留作者姓名和引用格式（如 [Smith et al., 2023]）
+- 对于专业术语，在首次出现时用「英文 (中文翻译)」格式
+- 只返回翻译文本，不要任何解释
+
+原文：
+{text}"""
+
+
+def _translate_chunk(text: str, target_lang: str, config: Config, timeout: int | None = None) -> str:
+    """Translate a single chunk via LLM.
+
+    Args:
+        text: Text chunk to translate.
+        target_lang: Target language code.
+        config: Global config for LLM access.
+        timeout: Optional timeout override.
+
+    Returns:
+        Translated text.
+    """
+    from scholaraio.metrics import call_llm
+
+    lang_name = _LANG_NAMES.get(target_lang, target_lang)
+    prompt = _TRANSLATE_PROMPT.format(target_lang=lang_name, text=text)
+    result = call_llm(prompt, config, timeout=timeout or config.llm.timeout_clean, purpose="translate")
+    return result.content.strip()
+
+
+# ============================================================================
+#  Public API
+# ============================================================================
+
+
+def translate_paper(
+    paper_dir: Path,
+    config: Config,
+    *,
+    target_lang: str | None = None,
+    force: bool = False,
+) -> Path | None:
+    """Translate a paper's markdown to the target language.
+
+    The translation is saved as ``paper_{lang}.md`` in the same directory.
+    Original ``paper.md`` is preserved.
+
+    Args:
+        paper_dir: Paper directory containing ``paper.md``.
+        config: Global config.
+        target_lang: Target language code, defaults to ``config.translate.target_lang``.
+        force: Re-translate even if translation file already exists.
+
+    Returns:
+        Path to the translated file, or ``None`` if skipped/failed.
+    """
+    lang = target_lang or config.translate.target_lang
+    md_path = paper_dir / "paper.md"
+    out_path = paper_dir / f"paper_{lang}.md"
+
+    if not md_path.exists():
+        _log.debug("no paper.md in %s, skipping", paper_dir.name)
+        return None
+
+    if out_path.exists() and not force:
+        _log.debug("translation already exists: %s", out_path.name)
+        return out_path
+
+    text = md_path.read_text(encoding="utf-8", errors="replace")
+    if not text.strip():
+        return None
+
+    # Detect source language — skip if already target
+    src_lang = detect_language(text)
+    if src_lang == lang:
+        _log.debug("paper already in target language (%s), skipping", lang)
+        return None
+
+    # Chunk and translate
+    chunk_size = config.translate.chunk_size
+    chunks = _split_into_chunks(text, chunk_size)
+    _log.debug("translating %s: %d chunks, target=%s", paper_dir.name, len(chunks), lang)
+
+    translated_chunks: list[str] = []
+    for i, chunk in enumerate(chunks):
+        try:
+            translated = _translate_chunk(chunk, lang, config)
+            translated_chunks.append(translated)
+            _log.debug("  chunk %d/%d done (%d chars)", i + 1, len(chunks), len(translated))
+        except Exception as e:
+            _log.error("  chunk %d/%d failed: %s", i + 1, len(chunks), e)
+            translated_chunks.append(chunk)  # keep original on failure
+
+    result = "\n\n".join(translated_chunks)
+    out_path.write_text(result, encoding="utf-8")
+    _log.debug("translation saved: %s (%d chars)", out_path.name, len(result))
+
+    # Record translation metadata in meta.json
+    _record_translation_meta(paper_dir, lang, src_lang, config)
+
+    return out_path
+
+
+def batch_translate(
+    papers_dir: Path,
+    config: Config,
+    *,
+    target_lang: str | None = None,
+    force: bool = False,
+    paper_ids: set[str] | None = None,
+) -> dict[str, int]:
+    """Batch translate all papers in the library.
+
+    Args:
+        papers_dir: Papers directory.
+        config: Global config.
+        target_lang: Target language code.
+        force: Re-translate existing translations.
+        paper_ids: Optional set of paper UUIDs to limit translation scope.
+
+    Returns:
+        Stats dict with ``translated``, ``skipped``, ``failed`` counts.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from scholaraio.papers import iter_paper_dirs, read_meta
+
+    lang = target_lang or config.translate.target_lang
+    workers = config.translate.concurrency
+    stats = {"translated": 0, "skipped": 0, "failed": 0}
+
+    dirs = list(iter_paper_dirs(papers_dir))
+    if paper_ids:
+        filtered = []
+        for d in dirs:
+            try:
+                meta = read_meta(d)
+                if meta.get("id") in paper_ids:
+                    filtered.append(d)
+            except Exception:
+                pass
+        dirs = filtered
+
+    def _do_one(pdir: Path) -> str:
+        try:
+            result = translate_paper(pdir, config, target_lang=lang, force=force)
+            if result is None:
+                return "skipped"
+            return "translated"
+        except Exception as e:
+            _log.error("translation failed for %s: %s", pdir.name, e)
+            return "failed"
+
+    if workers > 1 and len(dirs) > 1:
+        with ThreadPoolExecutor(max_workers=min(workers, len(dirs))) as pool:
+            futures = {pool.submit(_do_one, d): d for d in dirs}
+            for fut in as_completed(futures):
+                status = fut.result()
+                stats[status] = stats.get(status, 0) + 1
+    else:
+        for pdir in dirs:
+            status = _do_one(pdir)
+            stats[status] = stats.get(status, 0) + 1
+
+    return stats
+
+
+def _record_translation_meta(paper_dir: Path, target_lang: str, src_lang: str, config: Config) -> None:
+    """Record translation info in meta.json."""
+    from scholaraio.papers import read_meta, write_meta
+
+    try:
+        data = read_meta(paper_dir)
+        translations = data.get("translations", {})
+        translations[target_lang] = {
+            "file": f"paper_{target_lang}.md",
+            "source_lang": src_lang,
+            "translated_at": datetime.now().isoformat(timespec="seconds"),
+            "model": config.llm.model,
+        }
+        data["translations"] = translations
+        write_meta(paper_dir, data)
+    except Exception as e:
+        _log.debug("failed to record translation meta: %s", e)

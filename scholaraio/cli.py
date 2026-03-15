@@ -33,6 +33,7 @@ cli.py — scholaraio 命令行入口
     scholaraio explore viz --name <NAME>
     scholaraio explore info [--name NAME]
     scholaraio export bibtex [<paper-id> ...] [--all] [--year Y] [--journal J] [-o FILE]
+    scholaraio translate [<paper-id> | --all] [--lang LANG] [--force]
     scholaraio import-endnote <file.xml|file.ris> [--no-api] [--dry-run] [--no-convert]
     scholaraio import-zotero [--api-key KEY] [--library-id ID] [--local PATH] [--list-collections] ...
     scholaraio attach-pdf <paper-id> <path/to/paper.pdf>
@@ -280,8 +281,12 @@ def cmd_show(args: argparse.Namespace, cfg) -> None:
         if not md_path.exists():
             _log.error("paper.md not found: %s", md_path)
             sys.exit(1)
-        ui("\n--- Full Text ---\n")
-        ui(load_l4(md_path))
+        lang = getattr(args, "lang", None)
+        if lang:
+            ui(f"\n--- Full Text ({lang}) ---\n")
+        else:
+            ui("\n--- Full Text ---\n")
+        ui(load_l4(md_path, lang=lang))
         _record_read()
         return
 
@@ -715,6 +720,35 @@ def cmd_shared_refs(args: argparse.Namespace, cfg) -> None:
         else:
             ui(f"[{i}] [{count}x] DOI: {r['target_doi']}")
         ui()
+
+
+def cmd_translate(args: argparse.Namespace, cfg) -> None:
+    from scholaraio.papers import iter_paper_dirs
+    from scholaraio.translate import batch_translate, translate_paper
+
+    papers_dir = cfg.papers_dir
+
+    # Determine target language: CLI flag > config default
+    target_lang = args.lang or cfg.translate.target_lang
+
+    # Determine auto behavior: CLI override > config default
+    # --translate / --no-translate override config.translate.auto_translate
+    # When neither is set, use config default for batch, always translate for single paper
+
+    if args.paper_id:
+        paper_d = _resolve_paper(args.paper_id, cfg)
+        result = translate_paper(paper_d, cfg, target_lang=target_lang, force=args.force)
+        if result:
+            ui(f"翻译完成: {result}")
+        else:
+            ui("跳过（已是目标语言或翻译已存在，使用 --force 强制重新翻译）")
+    elif args.all:
+        ui(f"批量翻译 → {target_lang}")
+        stats = batch_translate(papers_dir, cfg, target_lang=target_lang, force=args.force)
+        ui(f"完成: {stats['translated']} 已翻译 | {stats['skipped']} 跳过 | {stats['failed']} 失败")
+    else:
+        ui("请指定 <paper-id> 或 --all")
+        sys.exit(1)
 
 
 def cmd_refetch(args: argparse.Namespace, cfg) -> None:
@@ -2408,12 +2442,14 @@ def _print_header(l1: dict) -> None:
     ui(f"year     : {l1.get('year') or '?'}  |  journal: {l1.get('journal') or '?'}")
     if l1.get("doi"):
         ui(f"doi      : {l1['doi']}")
+    ids = l1.get("ids") or {}
+    if ids.get("patent_publication_number"):
+        ui(f"pub_num  : {ids['patent_publication_number']}")
     if l1.get("paper_type"):
         ui(f"type     : {l1['paper_type']}")
     cite_str = _format_citations(l1.get("citation_count") or {})
     if cite_str:
         ui(f"cited    : {cite_str}")
-    ids = l1.get("ids") or {}
     if ids.get("semantic_scholar_url"):
         ui(f"S2       : {ids['semantic_scholar_url']}")
     if ids.get("openalex_url"):
@@ -2462,6 +2498,7 @@ def main() -> None:
         choices=[1, 2, 3, 4],
         help="加载层级：1=元数据, 2=摘要, 3=结论, 4=全文（默认 2）",
     )
+    p_show.add_argument("--lang", type=str, default=None, help="加载翻译版本（如 zh），仅 L4 生效")
 
     # --- embed ---
     p_embed = sub.add_parser("embed", help="生成语义向量写入 index.db")
@@ -2798,6 +2835,14 @@ def main() -> None:
     p_l3.add_argument("--force", action="store_true", help="强制重新提取（覆盖已有结果）")
     p_l3.add_argument("--inspect", action="store_true", help="展示提取过程详情")
     p_l3.add_argument("--max-retries", type=int, default=2, help="最大重试次数（默认 2）")
+
+    # --- translate ---
+    p_trans = sub.add_parser("translate", help="翻译论文 Markdown 到目标语言")
+    p_trans.set_defaults(func=cmd_translate)
+    p_trans.add_argument("paper_id", nargs="?", help="论文 ID（省略则需 --all）")
+    p_trans.add_argument("--all", action="store_true", help="批量翻译所有论文")
+    p_trans.add_argument("--lang", type=str, default=None, help="目标语言（默认读 config translate.target_lang）")
+    p_trans.add_argument("--force", action="store_true", help="强制重新翻译（覆盖已有翻译）")
 
     args = parser.parse_args()
     cfg = load_config()

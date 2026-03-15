@@ -53,18 +53,24 @@ CREATE TABLE IF NOT EXISTS papers_hash (
 
 _REGISTRY_SCHEMA = """
 CREATE TABLE IF NOT EXISTS papers_registry (
-    id           TEXT PRIMARY KEY,
-    dir_name     TEXT NOT NULL UNIQUE,
-    title        TEXT,
-    doi          TEXT,
-    year         INTEGER,
-    first_author TEXT
+    id                   TEXT PRIMARY KEY,
+    dir_name             TEXT NOT NULL UNIQUE,
+    title                TEXT,
+    doi                  TEXT,
+    publication_number   TEXT,
+    year                 INTEGER,
+    first_author         TEXT
 );
 """
 
 _REGISTRY_DOI_INDEX = """
 CREATE UNIQUE INDEX IF NOT EXISTS idx_registry_doi
     ON papers_registry(doi) WHERE doi IS NOT NULL AND doi != '';
+"""
+
+_REGISTRY_PUBNUM_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_registry_publication_number
+    ON papers_registry(publication_number) WHERE publication_number IS NOT NULL AND publication_number != '';
 """
 
 _CITATIONS_SCHEMA = """
@@ -134,6 +140,18 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
         except sqlite3.OperationalError:
             pass  # index already exists
         try:
+            conn.execute(_REGISTRY_PUBNUM_INDEX)
+        except sqlite3.OperationalError:
+            pass
+        # Migrate: add publication_number column if missing (pre-existing DB)
+        try:
+            conn.execute("SELECT publication_number FROM papers_registry LIMIT 0")
+        except sqlite3.OperationalError:
+            try:
+                conn.execute("ALTER TABLE papers_registry ADD COLUMN publication_number TEXT")
+            except sqlite3.OperationalError:
+                pass
+        try:
             conn.execute(_CITATIONS_IDX_TARGET_DOI)
         except sqlite3.OperationalError:
             pass
@@ -199,15 +217,17 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
 
             # Update papers_registry
             dir_name = pdir.name
+            pub_num = (meta.get("ids") or {}).get("patent_publication_number", "")
             conn.execute(
                 """INSERT OR REPLACE INTO papers_registry
-                   (id, dir_name, title, doi, year, first_author)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                   (id, dir_name, title, doi, publication_number, year, first_author)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     paper_id,
                     dir_name,
                     meta.get("title") or "",
                     meta.get("doi") or "",
+                    pub_num,
                     meta.get("year"),
                     meta.get("first_author_lastname") or "",
                 ),
@@ -541,6 +561,15 @@ def lookup_paper(db_path: Path, user_input: str) -> dict | None:
         row = conn.execute("SELECT * FROM papers_registry WHERE doi = ?", (user_input,)).fetchone()
         if row:
             return dict(row)
+        # Try patent publication number
+        try:
+            row = conn.execute(
+                "SELECT * FROM papers_registry WHERE publication_number = ?", (user_input,)
+            ).fetchone()
+            if row:
+                return dict(row)
+        except sqlite3.OperationalError:
+            pass  # column may not exist in old DB
     finally:
         conn.close()
     return None

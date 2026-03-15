@@ -359,6 +359,9 @@ class RobustExtractor:
         if not meta.first_author:
             meta.first_author = fb.first_author
 
+        # Patent number extraction from full text
+        _extract_patent_number(meta, text)
+
         return meta
 
     def _call_api(self, prompt: str) -> str:
@@ -371,6 +374,24 @@ class RobustExtractor:
             purpose="extract.robust",
         )
         return result.content
+
+
+# ============================================================================
+#  Patent number extraction
+# ============================================================================
+
+
+def _extract_patent_number(meta, text: str) -> None:
+    """Extract patent publication number from text and set paper_type if patent."""
+    from scholaraio.ingest.metadata._models import PATENT_NUMBER_RE
+
+    m = PATENT_NUMBER_RE.search(text[:10000])
+    if m and not meta.publication_number:
+        meta.publication_number = m.group(1)
+    # Heuristic: if publication_number found and no DOI, likely a patent
+    if meta.publication_number and not meta.doi:
+        if not meta.paper_type or meta.paper_type in ("", "article"):
+            meta.paper_type = "patent"
 
 
 # ============================================================================
