@@ -140,6 +140,10 @@ class TestChicago:
         ref = _fmt_chicago_author_date(FULL_META)
         assert "https://doi.org/" in ref
 
+    def test_no_authors(self):
+        ref = _fmt_chicago_author_date(MINIMAL_META)
+        assert "Unknown" in ref
+
 
 class TestMLA:
     def test_single_author_reversed(self):
