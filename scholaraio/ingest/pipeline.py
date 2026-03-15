@@ -107,6 +107,59 @@ class InboxCtx:
 # ============================================================================
 
 
+def step_office_convert(ctx: InboxCtx) -> StepResult:
+    """Office 文档（DOCX / XLSX / PPTX）→ Markdown 转换（MarkItDown）。
+
+    仅当 ``ctx.opts["office_path"]`` 存在时执行（由 ``_process_inbox`` 在扫描
+    Office 文件时注入；非 Office 文件入口时 ``office_path`` 不存在，步骤直接跳过）。
+    已有同名 ``.md`` 时跳过转换并直接使用已有文件。
+
+    Args:
+        ctx: Inbox 上下文，转换后 ``ctx.md_path`` 指向生成的 ``.md``。
+
+    Returns:
+        ``StepResult.OK`` 成功, ``StepResult.FAIL`` 失败。
+    """
+    office_path: Path | None = ctx.opts.get("office_path")
+    if office_path is None:
+        # Not an office file entry — skip this step
+        return StepResult.OK
+
+    md_path = ctx.inbox_dir / (office_path.stem + ".md")
+
+    if md_path.exists():
+        _log.debug(".md exists, skipping office convert: %s", md_path.name)
+        ctx.md_path = md_path
+        return StepResult.OK
+
+    if ctx.opts.get("dry_run"):
+        _log.debug("would convert office: %s -> %s", office_path.name, md_path.name)
+        ctx.md_path = md_path
+        return StepResult.OK
+
+    try:
+        from markitdown import MarkItDown
+    except ImportError:
+        _log.error("MarkItDown 未安装，无法转换 Office 文件。请运行: pip install 'markitdown[docx,pptx,xlsx]'")
+        ctx.status = "failed"
+        return StepResult.FAIL
+
+    try:
+        md_obj = MarkItDown()
+        result = md_obj.convert(str(office_path))
+        md_text = result.text_content or ""
+        if not md_text.strip():
+            _log.warning("Office 文件内容为空: %s", office_path.name)
+        md_path.write_text(md_text, encoding="utf-8")
+        ctx.md_path = md_path
+        _log.debug("office convert OK: %s -> %s", office_path.name, md_path.name)
+        return StepResult.OK
+    except Exception as exc:
+        _log.error("MarkItDown 转换失败 %s: %s", office_path.name, exc)
+        ctx.status = "failed"
+        return StepResult.FAIL
+
+
 def step_mineru(ctx: InboxCtx) -> StepResult:
     """PDF → Markdown 转换（MinerU）。
 
@@ -131,7 +184,7 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
 
     # md-only entry (no PDF): skip MinerU entirely
     if ctx.pdf_path is None:
-        if ctx.md_path and ctx.md_path.exists():
+        if ctx.md_path and (ctx.md_path.exists() or ctx.opts.get("dry_run")):
             _log.debug("no PDF, using existing .md: %s", ctx.md_path.name)
             return StepResult.OK
         _log.error("no PDF and no .md")
@@ -445,6 +498,14 @@ def step_ingest(ctx: InboxCtx) -> StepResult:
     _update_registry(ctx.cfg, ctx.meta, paper_d.name)
 
     _cleanup_inbox(ctx.pdf_path, None, dry_run=False)
+    # Clean up original Office source file (DOCX/XLSX/PPTX) if present
+    office_src: Path | None = ctx.opts.get("office_path")
+    if office_src and office_src.exists():
+        try:
+            office_src.unlink()
+            _log.debug("deleted office source: %s", office_src.name)
+        except OSError as exc:
+            _log.warning("could not delete office source %s: %s", office_src.name, exc)
     ctx.ingested_json = new_json
     ctx.status = "ingested"
     return StepResult.OK
@@ -629,6 +690,9 @@ def step_refetch(json_path: Path, cfg: Config, opts: dict) -> StepResult:
 
 
 STEPS: dict[str, StepDef] = {
+    "office_convert": StepDef(
+        fn=step_office_convert, scope="inbox", desc="Office 文档（DOCX/XLSX/PPTX）→ Markdown（MarkItDown）"
+    ),
     "mineru": StepDef(fn=step_mineru, scope="inbox", desc="PDF → Markdown（MinerU）"),
     "extract": StepDef(fn=step_extract, scope="inbox", desc="Markdown → 元数据提取"),
     "extract_doc": StepDef(fn=step_extract_doc, scope="inbox", desc="文档 → LLM 元数据提取"),
@@ -641,8 +705,13 @@ STEPS: dict[str, StepDef] = {
     "index": StepDef(fn=step_index, scope="global", desc="更新 SQLite FTS5 索引"),
 }
 
-# Document inbox uses a different step sequence (no DOI dedup)
-_DOC_INBOX_STEPS = ["mineru", "extract_doc", "ingest"]
+# Document inbox uses a different step sequence (no DOI dedup).
+# office_convert runs before mineru; for PDF entries it is a no-op (office_path not set).
+_DOC_INBOX_STEPS = ["office_convert", "mineru", "extract_doc", "ingest"]
+
+# Office formats scanned in any inbox when office_convert is in the step list.
+# Regular inbox presets don't include office_convert, so Office files there are ignored.
+_OFFICE_EXTENSIONS = (".docx", ".xlsx", ".pptx")
 
 PRESETS: dict[str, list[str]] = {
     "full": ["mineru", "extract", "dedup", "ingest", "toc", "l3", "embed", "index"],
@@ -691,17 +760,25 @@ def _process_inbox(
 
     entries: dict[str, dict[str, Path | None]] = {}
     for pdf in sorted(inbox_dir.glob("*.pdf")):
-        entries.setdefault(pdf.stem, {"pdf": None, "md": None})["pdf"] = pdf
+        entries.setdefault(pdf.stem, {"pdf": None, "md": None, "office": None})["pdf"] = pdf
     for md in sorted(inbox_dir.glob("*.md")):
-        entries.setdefault(md.stem, {"pdf": None, "md": None})["md"] = md
+        entries.setdefault(md.stem, {"pdf": None, "md": None, "office": None})["md"] = md
+    # Scan Office files only when office_convert step is in the pipeline
+    has_office_step = "office_convert" in inbox_steps
+    if has_office_step:
+        for ext in _OFFICE_EXTENSIONS:
+            for office_file in sorted(inbox_dir.glob(f"*{ext}")):
+                entries.setdefault(office_file.stem, {"pdf": None, "md": None, "office": None})["office"] = office_file
 
     if not entries:
         if not is_thesis:
-            ui(f"No PDF or .md in inbox: {inbox_dir}")
+            msg = "No PDF, .md, or Office file" if has_office_step else "No PDF or .md file"
+            ui(f"{msg} in inbox: {inbox_dir}")
         return
 
     has_pdfs = any(e["pdf"] for e in entries.values())
-    md_only_count = sum(1 for e in entries.values() if not e["pdf"])
+    office_count = sum(1 for e in entries.values() if e.get("office") and not e["pdf"] and not e["md"])
+    md_only_count = sum(1 for e in entries.values() if not e["pdf"] and e["md"])
 
     needs_mineru = has_pdfs and "mineru" in inbox_steps
     use_cloud_batch = False
@@ -716,7 +793,12 @@ def _process_inbox(
                 _log.error("MinerU unreachable (local: %s, no cloud API key)", cfg.ingest.mineru_endpoint)
                 sys.exit(1)
 
-    ui(f"{label_prefix}Found {len(entries)} items" + (f" ({md_only_count} md-only)" if md_only_count else ""))
+    extra_info = []
+    if md_only_count:
+        extra_info.append(f"{md_only_count} md-only")
+    if office_count:
+        extra_info.append(f"{office_count} Office")
+    ui(f"{label_prefix}Found {len(entries)} items" + (f" ({', '.join(extra_info)})" if extra_info else ""))
     if not is_thesis:
         ui(f"data/papers/ has {len(existing_dois)} papers (by DOI)")
 
@@ -785,8 +867,21 @@ def _process_inbox(
         step_times["mineru"] = mineru_time
     sorted_entries = sorted(entries.items())
     for idx, (stem, paths) in enumerate(sorted_entries):
-        file_label = paths["pdf"].name if paths["pdf"] else paths["md"].name
-        ui(f"\n{label_prefix}[{idx + 1}/{len(sorted_entries)}] {'PDF' if paths['pdf'] else 'MD'}: {file_label}")
+        office_path = paths.get("office")
+        if paths["pdf"]:
+            file_label = paths["pdf"].name
+            file_type = "PDF"
+        elif paths["md"]:
+            # Prefer .md over Office when both exist (Office file will still be cleaned up)
+            file_label = paths["md"].name
+            file_type = "MD"
+        elif office_path:
+            file_label = office_path.name
+            file_type = office_path.suffix.lstrip(".").upper()
+        else:
+            file_label = paths["md"].name
+            file_type = "MD"
+        ui(f"\n{label_prefix}[{idx + 1}/{len(sorted_entries)}] {file_type}: {file_label}")
 
         # For long PDFs excluded from batch, keep mineru step
         file_steps = per_file_steps
@@ -795,13 +890,18 @@ def _process_inbox(
         elif batch_skip_mineru and long_pdf_stems and stem not in long_pdf_stems:
             file_steps = [s for s in per_file_steps if s != "mineru"]
 
+        # Inject office_path for office-only entries (no PDF) so downstream steps can clean up the source file
+        file_opts = dict(opts)
+        if office_path and not paths["pdf"]:
+            file_opts["office_path"] = office_path
+
         ctx = InboxCtx(
             pdf_path=paths["pdf"],
             inbox_dir=inbox_dir,
             papers_dir=papers_dir,
             existing_dois=existing_dois,
             cfg=cfg,
-            opts=opts,
+            opts=file_opts,
             pending_dir=pending_dir,
             md_path=paths["md"],
             is_thesis=is_thesis,
