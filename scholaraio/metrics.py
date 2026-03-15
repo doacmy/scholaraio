@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS events (
 _CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);",
     "CREATE INDEX IF NOT EXISTS idx_events_category ON events(category);",
+    "CREATE INDEX IF NOT EXISTS idx_events_cat_name ON events(category, name);",
 ]
 
 
@@ -219,8 +220,11 @@ class MetricsStore:
     def query_distinct_names(self, category: str) -> set[str]:
         """Return all distinct event names ever recorded for a category.
 
-        Unlike :meth:`query`, this has no row-count cap — it reads a single
-        ``SELECT DISTINCT`` projection so it is safe even for very large tables.
+        Unlike :meth:`query`, this issues a ``SELECT DISTINCT`` projection
+        rather than paginating full rows, so memory usage scales with the
+        number of *unique* names rather than total event count.  A composite
+        ``(category, name)`` index makes the scan efficient for typical
+        library sizes.
 
         Args:
             category: Event category to filter on (e.g. ``"read"``).

@@ -1498,6 +1498,16 @@ def federated_search(
 
         elif src.startswith("explore:"):
             explore_name = src[len("explore:") :]
+            from scholaraio.explore import validate_explore_name
+
+            if explore_name != "*" and not validate_explore_name(explore_name):
+                output[src] = [
+                    {
+                        "error": "invalid_explore_name",
+                        "message": f"Invalid explore library name '{explore_name}'. Names must be non-empty and must not contain path separators or '..'.",
+                    }
+                ]
+                continue
             if explore_name == "*":
                 from scholaraio.explore import list_explore_libs
 

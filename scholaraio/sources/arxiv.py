@@ -48,7 +48,9 @@ def search_arxiv(query: str, top_k: int = 10) -> list[dict]:
 
     try:
         root = ET.fromstring(resp.text)
-    except ET.ParseError as e:
+    except Exception as e:
+        # Covers both xml.etree.ElementTree.ParseError and defusedxml
+        # security exceptions (DTDForbidden, EntitiesForbidden, etc.).
         _log.warning("arXiv XML 解析失败: %s", e)
         return []
 

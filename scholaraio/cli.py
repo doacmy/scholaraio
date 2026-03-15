@@ -1612,6 +1612,12 @@ def cmd_fsearch(args: argparse.Namespace, cfg) -> None:
 
         elif scope.startswith("explore:"):
             explore_name = scope[len("explore:") :]
+            from scholaraio.explore import validate_explore_name
+
+            if explore_name != "*" and not validate_explore_name(explore_name):
+                ui(f"  无效的 explore 库名 '{explore_name}'：不能为空，且不能包含路径分隔符或 '..'")
+                ui()
+                continue
             if explore_name == "*":
                 from scholaraio.explore import list_explore_libs
 

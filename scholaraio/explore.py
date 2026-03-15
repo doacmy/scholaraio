@@ -70,6 +70,32 @@ def explore_db_path(name: str, cfg: Config | None = None) -> Path:
     return _db_path(name, cfg)
 
 
+def validate_explore_name(name: str) -> bool:
+    """Return True if *name* is a safe, non-traversing library identifier.
+
+    Rejects empty strings, absolute paths, and names that contain path
+    separators or ``..`` components so that callers cannot escape the
+    ``data/explore/`` directory.
+
+    Args:
+        name: Candidate explore library name supplied by the user.
+
+    Returns:
+        ``True`` when the name is safe to use in path construction.
+    """
+    if not name:
+        return False
+    import os
+
+    # Reject absolute paths and names that contain any path separator.
+    if os.path.isabs(name):
+        return False
+    if "/" in name or "\\" in name:
+        return False
+    # Reject dotdot traversal components.
+    return ".." not in name.split(os.sep)
+
+
 def _meta_path(name: str, cfg: Config | None = None) -> Path:
     return _explore_dir(name, cfg) / "meta.json"
 
