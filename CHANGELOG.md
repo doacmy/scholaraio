@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Insights analytics** (`scholaraio insights`): behavior dashboard showing top search keywords, most-read papers, weekly reading trend, semantic neighbor recommendations, and active workspaces with paper counts
 - **Metrics recording for search/read**: `search`, `usearch`, `vsearch`, and `show` commands now record events to `metrics.db` for behavior analysis
 - **`MetricsStore.query_distinct_names()`**: efficient distinct-name query with supporting `(category, name)` index, used by insights recommendations
-- **Skill YAML front matter**: all 25 skills now carry standardized `version`/`author`/`license`/`tags` metadata; new `insights` and `document` skills added
+- **Skill YAML front matter**: all 26 skills now carry standardized `version`/`author`/`license`/`tags` metadata; new `insights` and `document` skills added
 - **clawhub.yaml**: marketplace manifest listing all available skills for discovery
 - **`explore fetch --limit`**: cap the number of papers fetched from OpenAlex (useful for quick sampling)
 - **`attach-pdf --dry-run`**: preview what `attach-pdf` will do without actually running MinerU conversion

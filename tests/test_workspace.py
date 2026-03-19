@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 
-from scholaraio.workspace import add, create, list_workspaces, read_paper_ids
+import pytest
+
+from scholaraio.workspace import add, create, list_workspaces, read_paper_ids, rename
 
 
 class TestWorkspaceCreate:
@@ -99,3 +101,32 @@ class TestListWorkspaces:
 
         names = list_workspaces(ws_root)
         assert names == ["real"]
+
+
+class TestRenameWorkspace:
+    """rename contract: moves workspace and validates source/target."""
+
+    def test_rename_success(self, tmp_path):
+        ws_root = tmp_path / "workspace"
+        create(ws_root / "old")
+
+        new_dir = rename(ws_root, "old", "new")
+
+        assert new_dir == ws_root / "new"
+        assert (ws_root / "new" / "papers.json").exists()
+        assert not (ws_root / "old").exists()
+
+    def test_rename_missing_source_raises(self, tmp_path):
+        ws_root = tmp_path / "workspace"
+        ws_root.mkdir(parents=True, exist_ok=True)
+
+        with pytest.raises(FileNotFoundError, match="工作区不存在"):
+            rename(ws_root, "missing", "new")
+
+    def test_rename_target_exists_raises(self, tmp_path):
+        ws_root = tmp_path / "workspace"
+        create(ws_root / "old")
+        create(ws_root / "new")
+
+        with pytest.raises(FileExistsError, match="目标工作区已存在"):
+            rename(ws_root, "old", "new")

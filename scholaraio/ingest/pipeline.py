@@ -2011,8 +2011,7 @@ def _ensure_registry_schema(conn, db_path: Path) -> None:
         )
     except sqlite3.IntegrityError:
         _log.warning(
-            "Duplicate publication_number values found; "
-            "creating non-unique index. Run 'scholaraio index' to rebuild."
+            "Duplicate publication_number values found; creating non-unique index. Run 'scholaraio index' to rebuild."
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_registry_publication_number "

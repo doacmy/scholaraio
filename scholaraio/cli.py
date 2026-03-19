@@ -1691,7 +1691,11 @@ def cmd_ws(args: argparse.Namespace, cfg) -> None:
             print(bib)
 
     elif action == "rename":
-        ws_dir = workspace.rename(ws_root, args.old_name, args.new_name)
+        try:
+            workspace.rename(ws_root, args.old_name, args.new_name)
+        except (FileNotFoundError, FileExistsError) as e:
+            ui(str(e))
+            return
         ui(f"工作区已重命名: {args.old_name} → {args.new_name}")
 
 
