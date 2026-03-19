@@ -297,6 +297,9 @@ def fetch_explore(
     Returns:
         本次新拉取的论文数量。
     """
+    if limit is not None and limit <= 0:
+        raise ValueError(f"limit 必须为正整数，当前为: {limit}")
+
     out_dir = _explore_dir(name, cfg)
     out_dir.mkdir(parents=True, exist_ok=True)
     papers_file = _papers_path(name, cfg)
