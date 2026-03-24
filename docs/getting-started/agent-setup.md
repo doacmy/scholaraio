@@ -5,7 +5,7 @@ ScholarAIO can be used in two different ways:
 1. Open this repository directly with your coding agent.
 2. Register ScholarAIO skills or tools so they are available from another project.
 
-The right setup depends on which agent you use and whether it supports native skills, plugins, or MCP.
+The right setup depends on which agent you use and whether it supports native skills or plugins.
 
 ## Start Here
 
@@ -14,7 +14,6 @@ The right setup depends on which agent you use and whether it supports native sk
 | Try ScholarAIO, inspect the codebase, or contribute | Open this repository directly |
 | Use ScholarAIO from any project in Claude Code | Install the Claude Code plugin |
 | Reuse ScholarAIO skills in Codex / OpenClaw | Clone the repo once, then symlink the skills into `~/.agents/skills/` |
-| Use ScholarAIO with Cursor, Windsurf, Copilot, or other MCP clients | Run the MCP server |
 
 ## Open This Repository Directly
 
@@ -138,26 +137,6 @@ For cross-project use on Windows, either set `SCHOLARAIO_CONFIG` to `"$repoRoot\
 
 This registers the skills, not the full repository instructions. If you want the agent to also read ScholarAIO's bundled project guidance, open this repository directly instead of only linking the skills.
 
-## MCP Server for IDEs and MCP Clients
-
-For tools that do not have a documented cross-project skill installation path here, the stable integration is MCP.
-
-Start the server after installing ScholarAIO:
-
-```bash
-# if you did not install .[full], add the MCP extra first
-pip install -e ".[mcp]"
-scholaraio-mcp
-```
-
-Then connect your MCP client to that command. This is the best option for:
-
-- Cursor outside this repository
-- Windsurf outside this repository
-- GitHub Copilot environments that support MCP
-- Claude Desktop
-- Any generic MCP-compatible client
-
 ## Which Path Should I Choose?
 
 | Situation | Best choice |
@@ -165,7 +144,6 @@ Then connect your MCP client to that command. This is the best option for:
 | You are evaluating ScholarAIO itself | Open this repository directly |
 | You want ScholarAIO in Claude Code across projects | Claude Code plugin |
 | You want ScholarAIO skills in Codex / OpenClaw across projects | Global skill symlink |
-| You want IDE integration more than repo-native instructions | MCP server |
 
 ## Verify the Setup
 
@@ -174,7 +152,6 @@ Use one of these checks after installation:
 - In this repository: ask your agent to search or show a paper and confirm it can see ScholarAIO instructions or skills.
 - In Claude Code plugin mode: verify `/scholaraio:search` appears.
 - In Codex / OpenClaw: restart the agent and ask it to use the `search` or `show` skill.
-- In MCP mode: confirm the client lists ScholarAIO tools and can call a simple one.
 
 ## Related Guides
 
