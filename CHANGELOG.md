@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **Chicago citation format**: empty authors list no longer causes `IndexError`; condition reordered to check `not authors` first (consistent with APA/Vancouver)
-- **Federated search DOI annotation**: `WHERE doi IN (...)` replaced with `WHERE LOWER(doi) IN (...)` in both `cli.py` and `mcp_server.py`, preventing false negatives when stored DOIs have different casing
+- **Federated search DOI annotation**: `WHERE doi IN (...)` replaced with `WHERE LOWER(doi) IN (...)` in `cli.py`, preventing false negatives when stored DOIs have different casing
 - **`insights --days` validation**: replaced `args.days or 30` with explicit `days <= 0` check; `--days 0` or negative values now produce a clear error instead of silently defaulting to 30
 
 - CLI error messages and output text unified to Chinese

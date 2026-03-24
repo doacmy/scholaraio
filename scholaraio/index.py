@@ -352,7 +352,7 @@ def _reference_dois(refs: list) -> list[str]:
                 or str(external_ids.get("DOI") or "")
                 or str(external_ids_alt.get("DOI") or "")
             )
-        doi = (doi or "").strip()
+        doi = (doi or "").strip().lower()
         if doi:
             dois.append(doi)
     return dois
