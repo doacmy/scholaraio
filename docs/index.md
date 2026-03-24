@@ -14,7 +14,6 @@ ScholarAIO is a research terminal built around AI coding agents. You interact wi
 - **Literature Exploration**: Multi-dimensional OpenAlex queries with isolated data
 - **Workspace Management**: Organize papers into subsets for focused work
 - **26 Agent Skills**: Literature review, paper writing, gap analysis, and more
-- **MCP Server**: 32 tools for integration with Claude Desktop, Cursor, etc.
 
 ## Quick Start
 
@@ -24,12 +23,11 @@ scholaraio setup
 ```
 
 See [Installation](getting-started/installation.md) for detailed instructions.
-See [Agent Setup](getting-started/agent-setup.md) for repo-open vs plugin vs MCP setup paths.
+See [Agent Setup](getting-started/agent-setup.md) for repo-open vs plugin setup paths.
 
-## Three Usage Modes
+## Two Usage Modes
 
 | Mode | Interface | Best for |
 |------|-----------|----------|
 | **Agent** | Claude Code CLI | Full research workflow via natural language |
-| **MCP** | Claude Desktop / Cursor | IDE-integrated literature access |
 | **CLI** | Terminal | Scripting and automation |

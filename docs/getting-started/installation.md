@@ -25,7 +25,6 @@ pip install -e ".[full]"
 | `embed` | Semantic search (sentence-transformers + FAISS) |
 | `topics` | BERTopic topic modeling |
 | `import` | Endnote / Zotero import |
-| `mcp` | MCP server for Claude Desktop / Cursor |
 | `full` | All of the above |
 | `dev` | Development tools (pytest, ruff, mypy) |
 
@@ -45,7 +44,7 @@ scholaraio setup check
 
 ## Agent Setup
 
-If you want to know which path to use for Claude Code, Codex, OpenClaw, Cursor, or MCP clients, see:
+If you want to know which path to use for Claude Code, Codex, OpenClaw, Cursor, or other agents, see:
 
 - [Agent Setup](agent-setup.md)
 
@@ -53,7 +52,7 @@ That guide separates:
 
 - opening this repository directly
 - registering ScholarAIO for use from another project
-- choosing between native skills, plugins, and MCP
+- choosing between native skills and plugins
 
 ## Embedding Model
 

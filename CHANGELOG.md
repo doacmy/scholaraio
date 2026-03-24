@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- **MCP server**: Removed `scholaraio/mcp_server.py` (1585 lines, 32 tools) and the `scholaraio-mcp` entry point. All agent interactions now go through CLI + skills, which are agent-agnostic and supported across Claude Code, Codex, Cursor, Windsurf, Cline, and GitHub Copilot. The `[mcp]` optional dependency group has also been removed.
+
 ## [1.1.0] — 2026-03-24
 
 ### Added

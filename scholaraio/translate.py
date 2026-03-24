@@ -99,10 +99,7 @@ def detect_language(text: str) -> str:
     # default to English rather than making a brittle claim.
     words = [w.lower() for w in _LATIN_WORD_RE.findall(sample)]
     if words:
-        scores = {
-            lang: sum(1 for w in words if w in stopwords)
-            for lang, stopwords in _LATIN_STOPWORDS.items()
-        }
+        scores = {lang: sum(1 for w in words if w in stopwords) for lang, stopwords in _LATIN_STOPWORDS.items()}
         best_lang, best_score = max(scores.items(), key=lambda item: item[1])
         if best_score >= 2:
             top_tied = sum(1 for score in scores.values() if score == best_score)
