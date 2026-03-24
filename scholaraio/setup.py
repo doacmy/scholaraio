@@ -159,7 +159,7 @@ def check_dep_group(group: str) -> DepGroupStatus:
     for import_name, pip_name in pairs:
         try:
             importlib.import_module(import_name)
-        except ImportError:
+        except (ImportError, RuntimeError):
             missing.append(pip_name)
     return DepGroupStatus(name=group, installed=not missing, missing=missing)
 

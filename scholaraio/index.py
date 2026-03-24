@@ -301,7 +301,7 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
                     )
 
             # Insert references into citations table
-            refs = meta.get("references") or []
+            refs = _reference_dois(meta.get("references") or [])
             if refs:
                 conn.execute("DELETE FROM citations WHERE source_id = ?", (paper_id,))
                 conn.executemany(
@@ -326,6 +326,36 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
 
 
 _SEARCH_COLS = "paper_id, title, authors, year, journal, doi, paper_type, citation_count"
+
+
+def _reference_dois(refs: list) -> list[str]:
+    """Extract DOI strings from heterogeneous reference entries.
+
+    Supports both the canonical list[str] shape and dict entries that may
+    come from manually curated metadata or external APIs.
+    """
+    dois: list[str] = []
+    for ref in refs:
+        doi = ""
+        if isinstance(ref, str):
+            doi = ref
+        elif isinstance(ref, dict):
+            external_ids = ref.get("externalIds")
+            if not isinstance(external_ids, dict):
+                external_ids = {}
+            external_ids_alt = ref.get("external_ids")
+            if not isinstance(external_ids_alt, dict):
+                external_ids_alt = {}
+            doi = (
+                str(ref.get("doi") or "")
+                or str(ref.get("DOI") or "")
+                or str(external_ids.get("DOI") or "")
+                or str(external_ids_alt.get("DOI") or "")
+            )
+        doi = (doi or "").strip().lower()
+        if doi:
+            dois.append(doi)
+    return dois
 
 
 def _ensure_fts_table(conn: sqlite3.Connection) -> None:

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- **MCP server**: Removed `scholaraio/mcp_server.py` (1585 lines, 32 tools) and the `scholaraio-mcp` entry point. All agent interactions now go through CLI + skills, which are agent-agnostic and supported across Claude Code, Codex, Cursor, Windsurf, Cline, and GitHub Copilot. The `[mcp]` optional dependency group has also been removed.
+
+## [1.1.0] — 2026-03-24
+
 ### Added
 
 - **Patent literature management**: New `data/inbox-patent/` inbox for patent documents; automatic publication number extraction (CN/US/EP/WO/JP/KR/DE/FR/GB/TW/IN/AU + more formats); deduplication by publication number; `paper_type: patent` auto-tagging; `publication_number` field in `PaperMetadata` and `papers_registry`
@@ -21,14 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **`explore fetch --limit`**: cap the number of papers fetched from OpenAlex (useful for quick sampling)
 - **`attach-pdf --dry-run`**: preview what `attach-pdf` will do without actually running MinerU conversion
 - **`document inspect`** (`scholaraio document inspect <file>`): inspect Office documents (DOCX/PPTX/XLSX) showing structure, layout, content preview, and overflow warnings; new `document.py` module with `inspect_pptx`/`inspect_docx`/`inspect_xlsx` functions
-
-### Fixed
-
-- **Chicago citation format**: empty authors list no longer causes `IndexError`; condition reordered to check `not authors` first (consistent with APA/Vancouver)
-- **Federated search DOI annotation**: `WHERE doi IN (...)` replaced with `WHERE LOWER(doi) IN (...)` in both `cli.py` and `mcp_server.py`, preventing false negatives when stored DOIs have different casing
-- **`insights --days` validation**: replaced `args.days or 30` with explicit `days <= 0` check; `--days 0` or negative values now produce a clear error instead of silently defaulting to 30
-
-- **Office format import**: `inbox-doc/` now accepts `.docx`, `.xlsx`, `.pptx` files; new `step_office_convert` pipeline step converts them to Markdown via MarkItDown before ingestion
+- **Office format ingest**: `inbox-doc/` now accepts `.docx`, `.xlsx`, `.pptx` files; new `step_office_convert` pipeline step converts them to Markdown via MarkItDown before ingestion
 - **RIS export**: `export ris` outputs RIS format compatible with Zotero, Endnote, and Mendeley (zero dependencies)
 - **Markdown reference list export**: `export markdown` generates formatted reference lists with configurable citation styles (APA, Vancouver, Chicago, MLA); supports ordered/unordered lists
 - **DOCX export**: `export docx` converts any Markdown content to a Word `.docx` file, supporting headings, paragraphs, tables, lists, code blocks, and bold/italic text
@@ -38,8 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Chicago citation format**: empty authors list no longer causes `IndexError`; condition reordered to check `not authors` first (consistent with APA/Vancouver)
+- **Federated search DOI annotation**: `WHERE doi IN (...)` replaced with `WHERE LOWER(doi) IN (...)` in `cli.py`, preventing false negatives when stored DOIs have different casing
+- **`insights --days` validation**: replaced `args.days or 30` with explicit `days <= 0` check; `--days 0` or negative values now produce a clear error instead of silently defaulting to 30
+
 - CLI error messages and output text unified to Chinese
 - `citation_styles`: `show_style()`, `list_styles()`, `get_formatter()` error messages Chinese-ified; Google-style docstrings added
+- **Translation same-language skip**: language detection now recognizes common German/French/Spanish inputs, avoiding unnecessary same-language translation calls for supported targets
 
 ## [1.0.0] — 2026-03-14
 

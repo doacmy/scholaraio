@@ -11,7 +11,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
-[![MCP Tools](https://img.shields.io/badge/MCP_Tools-32-green.svg)](scholaraio/mcp_server.py)
 [![Claude Code Skills](https://img.shields.io/badge/Claude_Code_Skills-26-purple.svg)](.claude/skills/)
 
 </div>
@@ -32,13 +31,12 @@ Your coding agent already reads code, writes code, and runs experiments. Scholar
 | Try ScholarAIO itself or contribute to the repo | Open this repository directly with your agent |
 | Use ScholarAIO in Claude Code across many projects | Install the Claude Code plugin |
 | Reuse ScholarAIO skills in Codex / OpenClaw | Register the skills through `~/.agents/skills/` |
-| Use ScholarAIO from Cursor, Claude Desktop, or another MCP client | Run the MCP server |
 
 Detailed setup guide: [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)
 
 ## Use Inside This Repository
 
-This is the best path when you want the full ScholarAIO experience: bundled agent instructions, local skills, CLI, MCP server, and the complete codebase context.
+This is the best path when you want the full ScholarAIO experience: bundled agent instructions, local skills, CLI, and the complete codebase context.
 
 ```bash
 # 1. Clone and install
@@ -62,7 +60,7 @@ When you open the repo directly:
 - Windsurf reads `.windsurfrules`
 - GitHub Copilot reads `.github/copilot-instructions.md`
 
-You can also use the CLI directly with `scholaraio search "your topic"` or start the MCP server with `scholaraio-mcp`.
+You can also use the CLI directly with `scholaraio search "your topic"`.
 
 ## Register ScholarAIO in Another Project
 
@@ -105,24 +103,12 @@ cp ~/.codex/scholaraio/config.yaml ~/.scholaraio/config.yaml
 
 Without one of those two options, running `scholaraio` from another project may fall back to defaults rooted in that current project and create `data/` plus `workspace/` there. Restart the agent after creating the symlink. This registers the ScholarAIO skill library globally. For the full bundled project instructions, opening this repository directly is still the better path.
 
-### MCP server
-
-For Cursor, Claude Desktop, and other MCP-compatible clients, the stable integration path is the MCP server:
-
-```bash
-# install the optional MCP dependencies first if you did not use .[full]
-pip install -e ".[mcp]"
-scholaraio-mcp
-```
-
-See the full setup matrix in [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md).
-
 ## What It Does
 
 |  | Feature | Details |
 |--|---------|---------|
 | **PDF Parsing** | Deep structure extraction | [MinerU](https://github.com/opendatalab/MinerU) → Markdown with figures, tables, LaTeX equations preserved. Long PDFs (>100 pp) are auto-split and merged |
-| **Not Just Papers** | Any document goes in | Journal articles, theses, technical reports, standards, lecture notes — three inboxes for different document types, each with tailored metadata handling |
+| **Not Just Papers** | Any document goes in | Journal articles, theses, patents, technical reports, standards, lecture notes — four inboxes with tailored metadata handling |
 | **Hybrid Search** | Keyword + semantic fusion | Keyword + semantic embeddings → RRF ranking |
 | **Topic Discovery** | Auto-clustering | BERTopic + 6 interactive HTML visualizations — works on both your library and explore datasets |
 | **Literature Exploration** | Multi-dimensional discovery | OpenAlex with 9 filter dimensions (journal, concept, author, institution, keyword, source type, year, citations, work type) → embed → cluster → search |
@@ -135,7 +121,6 @@ See the full setup matrix in [`docs/getting-started/agent-setup.md`](docs/gettin
 | **Research Insights** | Reading behavior analytics | Search hot keywords, most-read papers, reading trends, and semantic neighbor recommendations for papers you haven't read yet |
 | **Diagrams & Figures** | Publication-ready visuals | Mermaid (flowcharts, sequence diagrams, ER diagrams, Gantt charts, mind maps) and vector graphics via Inkscape — output PNG/SVG/PDF |
 | **Academic Writing** | AI-assisted drafting | Literature review, paper sections, citation check, rebuttal, gap analysis — every claim traceable to your own library |
-| **MCP Server** | 32 tools | Works with Claude Desktop, Cursor, and any MCP client |
 
 ## Beyond Paper Management
 
@@ -150,18 +135,18 @@ The knowledge base is the foundation; what your agent builds on top of it is ope
 
 ## Works With Your Agent
 
-ScholarAIO is designed to be **agent-agnostic**, but not every agent exposes the same installation surface. Some work best by opening this repository directly; others are better through plugins or MCP.
+ScholarAIO is designed to be **agent-agnostic**, but not every agent exposes the same installation surface. Some work best by opening this repository directly; others are better through plugins.
 
 | Agent / IDE | Open this repo directly | Reuse from another project |
 |-------------|-------------------------|-----------------------------|
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `CLAUDE.md` + `.claude/skills/` | Claude plugin marketplace |
 | [Codex](https://openai.com/codex) / OpenClaw | `AGENTS.md` + `.agents/skills/` | Symlink skills into `~/.agents/skills/` |
-| [Cline](https://github.com/cline/cline) | `.clinerules` + `.claude/skills/` | Prefer MCP outside this repo |
-| [Cursor](https://cursor.sh) | `.cursorrules` | Prefer MCP outside this repo |
-| [Windsurf](https://codeium.com/windsurf) | `.windsurfrules` | Prefer MCP outside this repo |
-| [GitHub Copilot](https://github.com/features/copilot) | `.github/copilot-instructions.md` | Prefer MCP outside this repo |
+| [Cline](https://github.com/cline/cline) | `.clinerules` + `.claude/skills/` | CLI + skills |
+| [Cursor](https://cursor.sh) | `.cursorrules` | CLI + skills |
+| [Windsurf](https://codeium.com/windsurf) | `.windsurfrules` | CLI + skills |
+| [GitHub Copilot](https://github.com/features/copilot) | `.github/copilot-instructions.md` | CLI + skills |
 
-The **MCP server** (`scholaraio-mcp`, 32 tools) works with any MCP-compatible client. Skills follow the open [AgentSkills.io](https://agentskills.io) standard, and `.agents/skills/` is a symlink to `.claude/skills/` for cross-agent discovery.
+Skills follow the open [AgentSkills.io](https://agentskills.io) standard, and `.agents/skills/` is a symlink to `.claude/skills/` for cross-agent discovery.
 
 **Migrating from existing tools?** Import directly from Endnote (XML/RIS) and Zotero (Web API or local SQLite) — your PDFs, metadata, and references come along. More import sources are on the roadmap.
 
@@ -180,7 +165,7 @@ PDF → MinerU → Structured Markdown (figures + LaTeX intact)
    (keyword)     (semantic)      (clustering)
       └─────────────┼─────────────┘
                     ↓
-        Your agent (Claude Code / Cursor / CLI / MCP / ...)
+        Your agent (Claude Code / Cursor / CLI / ...)
 ```
 
 ## Configuration
@@ -198,12 +183,11 @@ Embedding model (Qwen3-Embedding-0.6B, ~1.2 GB) auto-downloads on first use. Def
 
 Full config reference → [`config.yaml`](config.yaml)
 
-## Three Ways to Use
+## Two Ways to Use
 
 | Mode | Best for | Command |
 |------|----------|---------|
 | **Agent** (recommended) | Full research workflow — conversational | `claude` / your preferred agent in project dir |
-| **MCP Server** | Claude Desktop / Cursor / any MCP client | `scholaraio-mcp` |
 | **CLI** | Scripting, quick queries | `scholaraio --help` |
 
 <details>
@@ -270,7 +254,7 @@ scholaraio metrics            View LLM usage stats
 ## Project Structure
 
 ```
-scholaraio/          # Python package — CLI, MCP server, and all core modules
+scholaraio/          # Python package — CLI and all core modules
   ingest/            #   PDF parsing + metadata extraction pipeline
   sources/           #   Data source adapters (local / Endnote / Zotero)
 

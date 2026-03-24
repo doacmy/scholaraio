@@ -1,4 +1,4 @@
-"""Shared arXiv Atom API helper used by both CLI and MCP server."""
+"""Shared arXiv Atom API helper used by CLI and federated search."""
 
 from __future__ import annotations
 

@@ -54,3 +54,29 @@ class TestShowLayer4Headings:
         cli.cmd_show(args, cfg)
 
         assert "\n--- 全文（原文，paper_fr.md 不存在） ---\n" in messages
+
+
+class TestSearchResultFormatting:
+    def test_print_search_result_omits_empty_extra(self, monkeypatch):
+        messages: list[str] = []
+
+        def fake_ui(message: str = "") -> None:
+            messages.append(message)
+
+        monkeypatch.setattr(cli, "ui", fake_ui)
+
+        cli._print_search_result(
+            1,
+            {
+                "paper_id": "paper-1",
+                "authors": "Smith, John, Doe, Jane",
+                "year": 2023,
+                "journal": "JFM",
+                "citation_count": 5,
+                "title": "Test Paper",
+            },
+            extra="",
+        )
+
+        assert messages
+        assert "( [])" not in messages[0]

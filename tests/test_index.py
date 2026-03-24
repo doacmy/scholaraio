@@ -51,6 +51,42 @@ class TestBuildAndSearch:
         turbulence_results = [r for r in results if "Turbulence" in r.get("title", "")]
         assert len(turbulence_results) == 1
 
+    def test_build_index_accepts_reference_dicts(self, tmp_path, tmp_db):
+        papers_dir = tmp_path / "papers"
+        paper_dir = papers_dir / "Smith-2023-Turbulence"
+        paper_dir.mkdir(parents=True)
+        (paper_dir / "meta.json").write_text(
+            json.dumps(
+                {
+                    "id": "aaaa-1111",
+                    "title": "Turbulence modeling in boundary layers",
+                    "authors": ["Smith, John"],
+                    "first_author_lastname": "Smith",
+                    "year": 2023,
+                    "journal": "Journal of Fluid Mechanics",
+                    "doi": "10.1234/jfm.2023.001",
+                    "abstract": "We propose a novel turbulence model for boundary layers.",
+                    "paper_type": "journal-article",
+                    "references": [
+                        {"doi": "10.1000/classic"},
+                        {"externalIds": {"DOI": "10.1000/second"}},
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        (paper_dir / "paper.md").write_text("# Turbulence\n\nFull text.", encoding="utf-8")
+
+        build_index(papers_dir, tmp_db)
+
+        with sqlite3.connect(tmp_db) as conn:
+            rows = conn.execute(
+                "SELECT target_doi FROM citations WHERE source_id = ? ORDER BY target_doi",
+                ("aaaa-1111",),
+            ).fetchall()
+        assert [row[0] for row in rows] == ["10.1000/classic", "10.1000/second"]
+
 
 class TestLookupPaper:
     """lookup_paper contract: find by UUID, dir_name, DOI, or publication_number."""

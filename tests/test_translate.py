@@ -34,6 +34,18 @@ class TestDetectLanguage:
     def test_korean_text(self):
         assert detect_language("이 논문은 경계층 난류 모델에 대해 설명합니다.") == "ko"
 
+    def test_german_text(self):
+        text = "Dies ist eine wissenschaftliche Arbeit und die Ergebnisse sind in der Studie beschrieben."
+        assert detect_language(text) == "de"
+
+    def test_french_text(self):
+        text = "Cette etude presente une analyse de la couche limite et des resultats experimentaux."
+        assert detect_language(text) == "fr"
+
+    def test_spanish_text(self):
+        text = "Este articulo presenta una revision de la literatura y de los resultados para el modelo."
+        assert detect_language(text) == "es"
+
     def test_empty_text_defaults_to_english(self):
         assert detect_language("") == "en"
 

@@ -50,6 +50,13 @@ _LANG_NAMES = {
 _CJK_RE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf]")
 _HANGUL_RE = re.compile(r"[\uac00-\ud7af]")
 _KANA_RE = re.compile(r"[\u3040-\u309f\u30a0-\u30ff]")
+_LATIN_WORD_RE = re.compile(r"[a-zA-ZÀ-ÿ]+")
+_LATIN_STOPWORDS: dict[str, set[str]] = {
+    "en": {"the", "and", "of", "to", "in", "for", "with", "is", "that", "this"},
+    "de": {"der", "die", "das", "und", "ist", "mit", "eine", "ein", "den", "von"},
+    "fr": {"le", "la", "les", "de", "des", "et", "une", "un", "dans", "pour"},
+    "es": {"el", "la", "los", "las", "de", "del", "y", "una", "un", "para"},
+}
 
 
 def detect_language(text: str) -> str:
@@ -59,7 +66,8 @@ def detect_language(text: str) -> str:
         text: Input text (first ~2000 chars are examined).
 
     Returns:
-        ISO 639-1 code: ``"zh"``, ``"ja"``, ``"ko"``, or ``"en"`` (default).
+        ISO 639-1 code: ``"zh"``, ``"ja"``, ``"ko"``, ``"en"``, ``"de"``,
+        ``"fr"``, or ``"es"``. Falls back to ``"en"`` when uncertain.
     """
     sample = text[:2000]
     # Strip code blocks and LaTeX to avoid false positives
@@ -85,6 +93,18 @@ def detect_language(text: str) -> str:
         return "zh"
     if hangul_count / total_alpha > 0.15:
         return "ko"
+
+    # Lightweight Latin-script detection for same-language skip logic.
+    # This is intentionally conservative; if scores tie or are weak,
+    # default to English rather than making a brittle claim.
+    words = [w.lower() for w in _LATIN_WORD_RE.findall(sample)]
+    if words:
+        scores = {lang: sum(1 for w in words if w in stopwords) for lang, stopwords in _LATIN_STOPWORDS.items()}
+        best_lang, best_score = max(scores.items(), key=lambda item: item[1])
+        if best_score >= 2:
+            top_tied = sum(1 for score in scores.values() if score == best_score)
+            if top_tied == 1:
+                return best_lang
     return "en"
 
 
