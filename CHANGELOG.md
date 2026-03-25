@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Zotero LaTeX filename too long** ([#32](https://github.com/ZimoLiao/scholaraio/issues/32)): Titles containing LaTeX math (e.g. `$\mathrm{La}{\mathrm{BH}}_8$`) or HTML/MathML entities now get properly cleaned before directory naming; added 255-byte filename length limit as safety net
+
 ### Removed
 
 - **MCP server**: Removed `scholaraio/mcp_server.py` (1585 lines, 32 tools) and the `scholaraio-mcp` entry point. All agent interactions now go through CLI + skills, which are agent-agnostic and supported across Claude Code, Codex, Cursor, Windsurf, Cline, and GitHub Copilot. The `[mcp]` optional dependency group has also been removed.
