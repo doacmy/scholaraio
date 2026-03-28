@@ -3224,7 +3224,7 @@ def main() -> None:
     p_tr_sub = p_tr.add_subparsers(dest="toolref_action", required=True)
 
     p_trf = p_tr_sub.add_parser("fetch", help="拉取工具文档（git clone → 提取 → 索引）")
-    p_trf.add_argument("tool", help="工具名（qe/lammps/gromacs）")
+    p_trf.add_argument("tool", help="工具名（qe/lammps/gromacs/openfoam/bioinformatics）")
     p_trf.add_argument("--version", default=None, help="版本号（如 7.5, stable_22Jul2025_update3）")
 
     p_trs = p_tr_sub.add_parser("show", help="查看指定命令/参数的文档")

@@ -28,8 +28,11 @@ import re
 import sqlite3
 import subprocess
 import textwrap
+from html import unescape
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import requests
 
 from scholaraio.log import ui
 
@@ -47,6 +50,7 @@ _DEFAULT_TOOLREF_DIR = Path("data/toolref")
 TOOL_REGISTRY: dict[str, dict] = {
     "qe": {
         "display_name": "Quantum ESPRESSO",
+        "source_type": "git",
         "repo": "https://github.com/QEF/q-e.git",
         "tag_prefix": "qe-",
         "doc_path": None,  # scattered across */Doc/
@@ -55,6 +59,7 @@ TOOL_REGISTRY: dict[str, dict] = {
     },
     "lammps": {
         "display_name": "LAMMPS",
+        "source_type": "git",
         "repo": "https://github.com/lammps/lammps.git",
         "tag_prefix": "stable_",
         "doc_path": "doc/src",
@@ -63,11 +68,26 @@ TOOL_REGISTRY: dict[str, dict] = {
     },
     "gromacs": {
         "display_name": "GROMACS",
+        "source_type": "git",
         "repo": "https://github.com/gromacs/gromacs.git",
         "tag_prefix": "release-",
         "doc_path": "docs",
         "doc_glob": "**/*.rst",
         "format": "rst",
+    },
+    "openfoam": {
+        "display_name": "OpenFOAM",
+        "source_type": "manifest",
+        "manifest_name": "openfoam",
+        "format": "html",
+        "default_version": "2312",
+    },
+    "bioinformatics": {
+        "display_name": "Bioinformatics Toolchain",
+        "source_type": "manifest",
+        "manifest_name": "bioinformatics",
+        "format": "html",
+        "default_version": "2026-03-curated",
     },
 }
 
@@ -107,6 +127,199 @@ def _validate_version(version: str) -> bool:
     if not version or os.path.isabs(version):
         return False
     return "/" not in version and "\\" not in version and ".." not in version
+
+
+def _slugify(value: str) -> str:
+    value = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip())
+    return value.strip("-") or "page"
+
+
+def _normalize_program_filter(tool: str, program: str) -> str:
+    prog = program.lower().strip()
+    if tool == "qe" and prog and not prog.endswith(".x"):
+        prog += ".x"
+    return prog
+
+
+def _has_local_docs(tool: str, version: str, cfg: Config | None = None) -> bool:
+    info = TOOL_REGISTRY[tool]
+    vdir = _version_dir(tool, version, cfg)
+    if not vdir.exists():
+        return False
+    if info["format"] == "def":
+        return any((vdir / "def").glob("INPUT_*.def"))
+    if info["format"] == "rst":
+        return any((vdir / "src").rglob("*.rst"))
+    if info["format"] == "html":
+        pages = list((vdir / "pages").glob("*.html"))
+        if not pages:
+            return False
+        if info.get("source_type") == "manifest":
+            expected = len(_build_manifest(tool, version))
+            return len(pages) >= expected
+        return True
+    return False
+
+
+def _build_openfoam_manifest(version: str) -> list[dict]:
+    base = f"https://doc.openfoam.com/{version}"
+    return [
+        {
+            "program": "simpleFoam",
+            "section": "solver",
+            "page_name": "openfoam/simpleFoam",
+            "title": "simpleFoam",
+            "url": f"{base}/tools/processing/solvers/rtm/incompressible/simpleFoam/",
+        },
+        {
+            "program": "pimpleFoam",
+            "section": "solver",
+            "page_name": "openfoam/pimpleFoam",
+            "title": "pimpleFoam",
+            "url": f"{base}/tools/processing/solvers/rtm/incompressible/pimpleFoam/",
+        },
+        {
+            "program": "rhoSimpleFoam",
+            "section": "solver",
+            "page_name": "openfoam/rhoSimpleFoam",
+            "title": "rhoSimpleFoam",
+            "url": f"{base}/tools/processing/solvers/rtm/compressible/rhoSimpleFoam/",
+        },
+        {
+            "program": "blockMesh",
+            "section": "mesh",
+            "page_name": "openfoam/blockMesh",
+            "title": "mesh generation overview",
+            "url": f"{base}/tools/pre-processing/mesh/generation/",
+        },
+        {
+            "program": "snappyHexMesh",
+            "section": "mesh",
+            "page_name": "openfoam/snappyHexMesh",
+            "title": "snappyHexMesh",
+            "url": f"{base}/tools/pre-processing/mesh/generation/snappyhexmesh/",
+        },
+        {
+            "program": "controlDict",
+            "section": "dictionary",
+            "page_name": "openfoam/controlDict",
+            "title": "controlDict",
+            "url": f"{base}/fundamentals/case-structure/controldict/",
+        },
+        {
+            "program": "fvSchemes",
+            "section": "dictionary",
+            "page_name": "openfoam/fvSchemes",
+            "title": "fvSchemes",
+            "url": f"{base}/fundamentals/case-structure/fvschemes/",
+        },
+        {
+            "program": "fvSolution",
+            "section": "dictionary",
+            "page_name": "openfoam/fvSolution",
+            "title": "fvSolution",
+            "url": f"{base}/fundamentals/case-structure/fvsolution/",
+        },
+        {
+            "program": "kOmegaSST",
+            "section": "model",
+            "page_name": "openfoam/kOmegaSST",
+            "title": "kOmegaSST",
+            "url": "https://doc.openfoam.com/2212/tools/processing/models/turbulence/ras/linear-evm/rtm/kOmegaSST/",
+        },
+        {
+            "program": "functionObjects",
+            "section": "post-processing",
+            "page_name": "openfoam/functionObjects",
+            "title": "function objects",
+            "url": f"{base}/tools/post-processing/function-objects/",
+        },
+        {
+            "program": "forces",
+            "section": "post-processing",
+            "page_name": "openfoam/forces",
+            "title": "forces",
+            "url": f"{base}/tools/post-processing/function-objects/forces/",
+        },
+    ]
+
+
+def _build_bioinformatics_manifest(_version: str) -> list[dict]:
+    return [
+        {
+            "program": "blastn",
+            "section": "alignment",
+            "page_name": "blast/blastn",
+            "title": "BLAST+ user manual",
+            "url": "https://www.ncbi.nlm.nih.gov/books/NBK279690/",
+        },
+        {
+            "program": "minimap2",
+            "section": "alignment",
+            "page_name": "minimap2/manual",
+            "title": "minimap2 manual",
+            "url": "https://lh3.github.io/minimap2/minimap2.html",
+        },
+        {
+            "program": "samtools",
+            "section": "alignment",
+            "page_name": "samtools/manual",
+            "title": "samtools manual",
+            "url": "https://www.htslib.org/doc/samtools.html",
+        },
+        {
+            "program": "samtools",
+            "section": "alignment",
+            "page_name": "samtools/sort",
+            "title": "samtools sort",
+            "url": "https://www.htslib.org/doc/samtools-sort.html",
+        },
+        {
+            "program": "samtools",
+            "section": "alignment",
+            "page_name": "samtools/view",
+            "title": "samtools view",
+            "url": "https://www.htslib.org/doc/samtools-view.html",
+        },
+        {
+            "program": "bcftools",
+            "section": "variant-calling",
+            "page_name": "bcftools/manual",
+            "title": "bcftools manual",
+            "url": "https://samtools.github.io/bcftools/bcftools.html",
+        },
+        {
+            "program": "mafft",
+            "section": "phylogenetics",
+            "page_name": "mafft/manual",
+            "title": "MAFFT manual",
+            "url": "https://mafft.cbrc.jp/alignment/software/multithreading.html",
+        },
+        {
+            "program": "iqtree",
+            "section": "phylogenetics",
+            "page_name": "iqtree/command-reference",
+            "title": "IQ-TREE command reference",
+            "url": "https://iqtree.github.io/doc/Command-Reference",
+        },
+        {
+            "program": "esmfold",
+            "section": "protein-structure",
+            "page_name": "esmfold/huggingface-doc",
+            "title": "ESM / ESMFold documentation",
+            "url": "https://huggingface.co/docs/transformers/model_doc/esm",
+        },
+    ]
+
+
+def _build_manifest(tool: str, version: str) -> list[dict]:
+    info = TOOL_REGISTRY[tool]
+    manifest_name = info.get("manifest_name")
+    if manifest_name == "openfoam":
+        return _build_openfoam_manifest(version)
+    if manifest_name == "bioinformatics":
+        return _build_bioinformatics_manifest(version)
+    raise ValueError(f"{tool} 未定义 manifest")
 
 
 # ============================================================================
@@ -578,6 +791,106 @@ def _parse_gromacs_rst(filepath: Path) -> list[dict]:
 
 
 # ============================================================================
+#  HTML manifest parsing (OpenFOAM / Bioinformatics)
+# ============================================================================
+
+
+def _extract_html_main(text: str) -> str:
+    for pattern in (
+        r"<main\b[^>]*>(.*?)</main>",
+        r"<article\b[^>]*>(.*?)</article>",
+        r"<body\b[^>]*>(.*?)</body>",
+    ):
+        m = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+        if m:
+            body = m.group(1)
+            h1_pos = body.lower().find("<h1")
+            if h1_pos > 0:
+                body = body[h1_pos:]
+            return body
+    return text
+
+
+def _html_to_text(text: str) -> str:
+    body = _extract_html_main(text)
+    body = re.sub(r"<(script|style|noscript|svg)\b.*?</\1>", "", body, flags=re.IGNORECASE | re.DOTALL)
+
+    code_blocks: list[str] = []
+
+    def _stash_code(m: re.Match[str]) -> str:
+        block = unescape(m.group(1))
+        block = re.sub(r"<[^>]+>", "", block)
+        token = f"__CODE_BLOCK_{len(code_blocks)}__"
+        code_blocks.append(block.strip())
+        return f"\n{token}\n"
+
+    body = re.sub(r"<pre\b[^>]*>(.*?)</pre>", _stash_code, body, flags=re.IGNORECASE | re.DOTALL)
+    body = re.sub(r"<code\b[^>]*>(.*?)</code>", _stash_code, body, flags=re.IGNORECASE | re.DOTALL)
+
+    body = re.sub(r"</(h\d|p|div|section|article|li|tr|table|ul|ol)>", "\n", body, flags=re.IGNORECASE)
+    body = re.sub(r"<br\s*/?>", "\n", body, flags=re.IGNORECASE)
+    body = re.sub(r"<li\b[^>]*>", "- ", body, flags=re.IGNORECASE)
+    body = re.sub(r"<[^>]+>", "", body)
+    body = unescape(body)
+
+    for idx, block in enumerate(code_blocks):
+        body = body.replace(f"__CODE_BLOCK_{idx}__", f"\n{block}\n")
+
+    lines = [re.sub(r"\s+", " ", line).strip() for line in body.splitlines()]
+    compact = []
+    blank = False
+    for line in lines:
+        if not line:
+            if not blank:
+                compact.append("")
+            blank = True
+            continue
+        compact.append(line)
+        blank = False
+    return "\n".join(compact).strip()
+
+
+def _parse_manifest_html(filepath: Path) -> list[dict]:
+    meta = json.loads(filepath.with_suffix(".json").read_text(encoding="utf-8"))
+    raw_html = filepath.read_text(encoding="utf-8", errors="replace")
+    text = _html_to_text(raw_html)
+
+    title = meta.get("title", "")
+    if not title:
+        title_match = re.search(r"<title[^>]*>(.*?)</title>", raw_html, re.IGNORECASE | re.DOTALL)
+        title = unescape(title_match.group(1)).strip() if title_match else meta["page_name"]
+
+    for anchor in (title, meta.get("program", ""), meta["page_name"].split("/")[-1]):
+        if anchor and anchor in text:
+            pos = text.find(anchor)
+            if pos > 0:
+                text = text[pos:]
+                break
+
+    lines = [line for line in text.splitlines() if line.strip()]
+    synopsis = ""
+    for line in lines:
+        if title and line == title:
+            continue
+        synopsis = line[:200]
+        break
+
+    return [
+        {
+            "program": meta.get("program", ""),
+            "section": meta.get("section", ""),
+            "page_name": meta["page_name"],
+            "title": title,
+            "category": meta.get("section", ""),
+            "var_type": "",
+            "default_val": "",
+            "synopsis": synopsis,
+            "content": text[:5000],
+        }
+    ]
+
+
+# ============================================================================
 #  Fetch: clone repo → extract docs → index
 # ============================================================================
 
@@ -602,6 +915,10 @@ def toolref_fetch(
         raise ValueError(f"未知工具：{tool}。支持的工具：{', '.join(TOOL_REGISTRY)}")
 
     info = TOOL_REGISTRY[tool]
+    source_type = info.get("source_type", "git")
+
+    if version is None:
+        version = info.get("default_version")
 
     if version and not _validate_version(version):
         raise ValueError(f"无效版本号：{version}")
@@ -610,75 +927,118 @@ def toolref_fetch(
     if version:
         vdir = _version_dir(tool, version, cfg)
         if vdir.exists():
-            ui(f"[toolref] {info['display_name']} {version} 文档已存在，跳过拉取")
-            count = _index_tool(tool, version, cfg)
-            _set_current(tool, version, cfg)
-            ui(f"[toolref] {info['display_name']} {version}：已索引 {count} 个文档页面")
-            return count
+            if _has_local_docs(tool, version, cfg):
+                ui(f"[toolref] {info['display_name']} {version} 文档已存在，跳过拉取")
+                count = _index_tool(tool, version, cfg)
+                _set_current(tool, version, cfg)
+                ui(f"[toolref] {info['display_name']} {version}：已索引 {count} 个文档页面")
+                return count
 
-    # determine git tag
-    tag = None
-    if version:
-        tag = f"{info['tag_prefix']}{version}"
+            import shutil
 
-    # clone to temp dir
-    import tempfile
+            ui(f"[toolref] 检测到 {info['display_name']} {version} 残缺目录，重新拉取")
+            shutil.rmtree(vdir)
 
-    with tempfile.TemporaryDirectory(prefix=f"toolref-{tool}-") as tmpdir:
-        clone_cmd = ["git", "clone", "--depth", "1"]
-        if tag:
-            clone_cmd += ["--branch", tag]
-        clone_cmd += [info["repo"], tmpdir]
+    if source_type == "git":
+        # determine git tag
+        tag = None
+        if version:
+            tag = f"{info['tag_prefix']}{version}"
 
-        ui(f"[toolref] 正在拉取 {info['display_name']} {version or 'latest'} 文档...")
-        try:
-            subprocess.run(
-                clone_cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=120,
-            )
-        except subprocess.CalledProcessError as e:
-            _log.error("git clone 失败：%s", e.stderr[:500])
-            raise RuntimeError(f"拉取 {tool} 文档失败。请检查版本号和网络。") from e
+        # clone to temp dir
+        import tempfile
 
-        # detect version from tag if not specified
-        if not version:
+        with tempfile.TemporaryDirectory(prefix=f"toolref-{tool}-") as tmpdir:
+            clone_cmd = ["git", "clone", "--depth", "1"]
+            if tag:
+                clone_cmd += ["--branch", tag]
+            clone_cmd += [info["repo"], tmpdir]
+
+            ui(f"[toolref] 正在拉取 {info['display_name']} {version or 'latest'} 文档...")
             try:
-                result = subprocess.run(
-                    ["git", "-C", tmpdir, "describe", "--tags", "--abbrev=0"],
+                subprocess.run(
+                    clone_cmd,
                     capture_output=True,
                     text=True,
                     check=True,
+                    timeout=120,
                 )
-                detected_tag = result.stdout.strip()
-                version = detected_tag.removeprefix(info["tag_prefix"])
-            except subprocess.CalledProcessError:
-                version = "latest"
+            except subprocess.CalledProcessError as e:
+                _log.error("git clone 失败：%s", e.stderr[:500])
+                raise RuntimeError(f"拉取 {tool} 文档失败。请检查版本号和网络。") from e
 
+            # detect version from tag if not specified
+            if not version:
+                try:
+                    result = subprocess.run(
+                        ["git", "-C", tmpdir, "describe", "--tags", "--abbrev=0"],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    )
+                    detected_tag = result.stdout.strip()
+                    version = detected_tag.removeprefix(info["tag_prefix"])
+                except subprocess.CalledProcessError:
+                    version = "latest"
+
+            vdir = _version_dir(tool, version, cfg)
+            vdir.mkdir(parents=True, exist_ok=True)
+
+            # extract docs based on format
+            tmppath = Path(tmpdir)
+            if info["format"] == "def":
+                dest = vdir / "def"
+                dest.mkdir(exist_ok=True)
+                for f in tmppath.rglob(info["doc_glob"]):
+                    (dest / f.name).write_bytes(f.read_bytes())
+                    _log.debug("提取: %s", f.name)
+            elif info["doc_path"]:
+                src = tmppath / info["doc_path"]
+                if src.exists():
+                    dest = vdir / "src"
+                    import shutil
+
+                    if dest.exists():
+                        shutil.rmtree(dest)
+                    shutil.copytree(src, dest)
+                else:
+                    _log.warning("文档路径不存在: %s", src)
+    elif source_type == "manifest":
+        version = version or info["default_version"]
         vdir = _version_dir(tool, version, cfg)
         vdir.mkdir(parents=True, exist_ok=True)
+        dest = vdir / "pages"
+        import shutil
 
-        # extract docs based on format
-        tmppath = Path(tmpdir)
-        if info["format"] == "def":
-            dest = vdir / "def"
-            dest.mkdir(exist_ok=True)
-            for f in tmppath.rglob(info["doc_glob"]):
-                (dest / f.name).write_bytes(f.read_bytes())
-                _log.debug("提取: %s", f.name)
-        elif info["doc_path"]:
-            src = tmppath / info["doc_path"]
-            if src.exists():
-                dest = vdir / "src"
-                import shutil
-
-                if dest.exists():
-                    shutil.rmtree(dest)
-                shutil.copytree(src, dest)
-            else:
-                _log.warning("文档路径不存在: %s", src)
+        if dest.exists():
+            shutil.rmtree(dest)
+        dest.mkdir(exist_ok=True)
+        session = requests.Session()
+        session.headers.update({"User-Agent": "ScholarAIO/1.3 toolref-fetch"})
+        manifest = _build_manifest(tool, version)
+        ui(f"[toolref] 正在拉取 {info['display_name']} {version} 官方文档页...")
+        failures: list[str] = []
+        for idx, item in enumerate(manifest, start=1):
+            try:
+                resp = session.get(item["url"], timeout=60)
+                resp.raise_for_status()
+            except requests.RequestException as e:
+                failures.append(item["url"])
+                _log.warning("拉取失败: %s (%s)", item["url"], e)
+                continue
+            slug = _slugify(item["page_name"])
+            html_path = dest / f"{idx:03d}-{slug}.html"
+            html_path.write_text(resp.text, encoding="utf-8")
+            html_path.with_suffix(".json").write_text(
+                json.dumps(item, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        if failures and not any(dest.glob("*.html")):
+            raise RuntimeError(f"拉取 {tool} 文档页失败：{failures[0]}")
+        if failures:
+            ui(f"[toolref] 警告：{len(failures)} 个页面拉取失败，已索引其余页面")
+    else:
+        raise ValueError(f"{tool} 不支持的 source_type: {source_type}")
 
     # write meta.json
     meta = {
@@ -686,7 +1046,8 @@ def toolref_fetch(
         "display_name": info["display_name"],
         "version": version,
         "format": info["format"],
-        "repo": info["repo"],
+        "repo": info.get("repo", ""),
+        "source_type": source_type,
     }
     (vdir / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -749,6 +1110,15 @@ def _index_tool(tool: str, version: str, cfg: Config | None = None) -> int:
                     records.extend(parsed)
                 except Exception as e:
                     _log.debug("跳过 %s: %s", f.name, e)
+    elif info["format"] == "html":
+        pages_dir = vdir / "pages"
+        if pages_dir.exists():
+            for f in sorted(pages_dir.glob("*.html")):
+                try:
+                    parsed = _parse_manifest_html(f)
+                    records.extend(parsed)
+                except Exception as e:
+                    _log.warning("解析 %s 失败: %s", f.name, e)
 
     # insert records
     for r in records:
@@ -910,9 +1280,20 @@ def toolref_show(
     rows = conn.execute(
         """SELECT * FROM toolref_pages
            WHERE tool = ? AND (version = ? OR ? IS NULL)
-           AND LOWER(page_name) = ?""",
-        (tool, version, version, query_str),
+           AND (LOWER(page_name) = ? OR LOWER(page_name) = ?)""",
+        (tool, version, version, query_str, f"{tool}/{query_str}"),
     ).fetchall()
+
+    if not rows:
+        # try exact suffix match (useful for "simpleFoam" -> "openfoam/simpleFoam")
+        suffix_pattern = f"%/{query_str}"
+        rows = conn.execute(
+            """SELECT * FROM toolref_pages
+               WHERE tool = ? AND (version = ? OR ? IS NULL)
+               AND LOWER(page_name) LIKE ?
+               LIMIT 20""",
+            (tool, version, version, suffix_pattern),
+        ).fetchall()
 
     if not rows:
         # try partial match (page_name contains query)
@@ -1002,9 +1383,7 @@ def toolref_search(
             sql += " AND p.version = ?"
             params.append(version)
         if program:
-            prog = program.lower()
-            if not prog.endswith(".x"):
-                prog += ".x"
+            prog = _normalize_program_filter(tool, program)
             sql += " AND LOWER(p.program) = ?"
             params.append(prog)
         if section:
