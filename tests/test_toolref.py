@@ -44,6 +44,11 @@ def test_expand_search_query_adds_bioinformatics_aliases():
     assert "iqtree" in expanded
 
 
+def test_expand_search_query_adds_qe_aliases():
+    expanded = _expand_search_query("qe", "ecut rho")
+    assert "ecutrho" in expanded
+
+
 def test_build_openfoam_manifest_uses_requested_version():
     manifest = _build_openfoam_manifest("2312")
     assert manifest

@@ -208,8 +208,15 @@ def _expand_search_query(tool: str, query: str) -> str:
     if tool == "openfoam":
         if "drag coefficient" in normalized or "drag coefficients" in normalized:
             expansions.extend(["forces", "force coeffs", "forcecoeffs"])
+        if "force coefficients" in normalized:
+            expansions.extend(["forces", "force coeffs", "forcecoeffs"])
         if "q criterion" in normalized:
-            expansions.extend(["function objects", "post processing", "q"])
+            expansions.extend(["function objects", "post processing", "qcriterion", "q"])
+    elif tool == "qe":
+        if "ecut rho" in normalized:
+            expansions.append("ecutrho")
+        if "ecut wfc" in normalized:
+            expansions.append("ecutwfc")
     elif tool == "bioinformatics":
         if "phylogenetic tree" in normalized:
             expansions.extend(["iqtree", "mafft", "phylogenetics"])
