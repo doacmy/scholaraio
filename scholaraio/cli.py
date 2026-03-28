@@ -790,7 +790,7 @@ def cmd_toolref(args: argparse.Namespace, cfg) -> None:
         action = args.toolref_action
 
         if action == "fetch":
-            count = toolref_fetch(args.tool, version=args.version, cfg=cfg)
+            count = toolref_fetch(args.tool, version=args.version, force=args.force, cfg=cfg)
             if count == 0:
                 ui("未索引任何页面。请检查版本号或文档源。")
 
@@ -841,7 +841,14 @@ def cmd_toolref(args: argparse.Namespace, cfg) -> None:
                     current_tool = e["tool"]
                     ui(f"\n{e['display_name']}:")
                 marker = " (current)" if e["is_current"] else ""
-                ui(f"  {e['version']}{marker} — {e['page_count']} 页")
+                completeness = ""
+                if e.get("source_type") == "manifest" and e.get("expected_pages"):
+                    completeness = f" [{e['page_count']}/{e['expected_pages']} 已索引"
+                    failed_pages = e.get("failed_pages")
+                    if failed_pages:
+                        completeness += f", {failed_pages} 失败"
+                    completeness += "]"
+                ui(f"  {e['version']}{marker} — {e['page_count']} 页{completeness}")
 
         elif action == "use":
             toolref_use(args.tool, args.version, cfg=cfg)
@@ -3230,6 +3237,7 @@ def main() -> None:
     p_trf = p_tr_sub.add_parser("fetch", help="拉取工具文档（git clone → 提取 → 索引）")
     p_trf.add_argument("tool", help="工具名（qe/lammps/gromacs/openfoam/bioinformatics）")
     p_trf.add_argument("--version", default=None, help="版本号（如 7.5, stable_22Jul2025_update3）")
+    p_trf.add_argument("--force", action="store_true", help="强制重新拉取并覆盖本地缓存")
 
     p_trs = p_tr_sub.add_parser("show", help="查看指定命令/参数的文档")
     p_trs.add_argument("tool", help="工具名")

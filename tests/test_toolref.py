@@ -10,6 +10,8 @@ from scholaraio.toolref import (
     _normalize_program_filter,
     _pick_manifest_synopsis,
     _parse_manifest_html,
+    toolref_fetch,
+    toolref_list,
 )
 
 
@@ -84,11 +86,13 @@ def test_has_local_docs_for_manifest_html(tmp_path, monkeypatch):
     assert not _has_local_docs("openfoam", "2312")
 
     (pages_dir / "001-openfoam-simpleFoam.html").write_text("<html></html>", encoding="utf-8")
+    (pages_dir / "001-openfoam-simpleFoam.json").write_text("{}", encoding="utf-8")
     assert not _has_local_docs("openfoam", "2312")
 
     manifest = _build_openfoam_manifest("2312")
     for idx, item in enumerate(manifest, start=1):
         (pages_dir / f"{idx:03d}-{item['page_name'].replace('/', '-')}.html").write_text("<html></html>", encoding="utf-8")
+        (pages_dir / f"{idx:03d}-{item['page_name'].replace('/', '-')}.json").write_text("{}", encoding="utf-8")
     assert _has_local_docs("openfoam", "2312")
 
 
@@ -150,3 +154,145 @@ def test_parse_manifest_html_uses_dictionary_synopsis(tmp_path):
 
     record = _parse_manifest_html(html_path)[0]
     assert record["synopsis"] == "fvSchemes dictionary"
+
+
+def test_toolref_fetch_manifest_force_rebuilds_pages(tmp_path, monkeypatch):
+    from scholaraio import toolref as mod
+
+    class FakeResponse:
+        def __init__(self, text: str):
+            self.text = text
+
+        def raise_for_status(self):
+            return None
+
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+
+        def get(self, url, timeout=60):
+            return FakeResponse(f"<html><body><main><h1>{url}</h1></main></body></html>")
+
+    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(mod.requests, "Session", FakeSession)
+    monkeypatch.setattr(
+        mod,
+        "_build_manifest",
+        lambda tool, version: [
+            {
+                "program": "simpleFoam",
+                "section": "solver",
+                "page_name": "openfoam/simpleFoam",
+                "title": "simpleFoam",
+                "url": "https://example.org/simpleFoam",
+            }
+        ],
+    )
+
+    count = toolref_fetch("openfoam", version="2312", cfg=None)
+    assert count == 1
+
+    extra = tmp_path / "openfoam" / "2312" / "pages" / "stale.html"
+    extra.write_text("stale", encoding="utf-8")
+
+    count = toolref_fetch("openfoam", version="2312", force=True, cfg=None)
+    assert count == 1
+    assert not extra.exists()
+
+
+def test_toolref_list_reads_manifest_meta(tmp_path, monkeypatch):
+    from scholaraio import toolref as mod
+
+    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    vdir = tmp_path / "openfoam" / "2312"
+    vdir.mkdir(parents=True)
+    (vdir / "meta.json").write_text(
+        json.dumps(
+            {
+                "tool": "openfoam",
+                "version": "2312",
+                "source_type": "manifest",
+                "expected_pages": 11,
+                "failed_pages": 2,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "openfoam" / "current").symlink_to(vdir, target_is_directory=True)
+
+    entries = toolref_list("openfoam", cfg=None)
+    assert len(entries) == 1
+    assert entries[0]["source_type"] == "manifest"
+    assert entries[0]["expected_pages"] == 11
+    assert entries[0]["failed_pages"] == 2
+
+
+def test_toolref_fetch_manifest_force_keeps_more_complete_cache(tmp_path, monkeypatch):
+    from scholaraio import toolref as mod
+
+    class FakeResponse:
+        def __init__(self, text: str):
+            self.text = text
+
+        def raise_for_status(self):
+            return None
+
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+
+        def get(self, url, timeout=60):
+            if "view" in url:
+                raise mod.requests.RequestException("boom")
+            return FakeResponse(f"<html><body><main><h1>{url}</h1></main></body></html>")
+
+    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(
+        mod,
+        "_build_manifest",
+        lambda tool, version: [
+            {
+                "program": "samtools",
+                "section": "alignment",
+                "page_name": "samtools/sort",
+                "title": "samtools sort",
+                "url": "https://example.org/sort",
+            },
+            {
+                "program": "samtools",
+                "section": "alignment",
+                "page_name": "samtools/view",
+                "title": "samtools view",
+                "url": "https://example.org/view",
+            },
+        ],
+    )
+
+    vdir = tmp_path / "bioinformatics" / "2026-03-curated"
+    pages_dir = vdir / "pages"
+    pages_dir.mkdir(parents=True)
+    for idx, name in enumerate(["samtools-sort", "samtools-view"], start=1):
+        (pages_dir / f"{idx:03d}-{name}.html").write_text("<html></html>", encoding="utf-8")
+        (pages_dir / f"{idx:03d}-{name}.json").write_text("{}", encoding="utf-8")
+    (vdir / "meta.json").write_text(
+        json.dumps(
+            {
+                "tool": "bioinformatics",
+                "version": "2026-03-curated",
+                "source_type": "manifest",
+                "fetched_pages": 2,
+                "expected_pages": 2,
+                "failed_pages": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod.requests, "Session", FakeSession)
+    monkeypatch.setattr(mod, "_index_tool", lambda tool, version, cfg=None: mod._manifest_page_count(vdir))
+    monkeypatch.setattr(mod, "_set_current", lambda tool, version, cfg=None: None)
+
+    count = toolref_fetch("bioinformatics", version="2026-03-curated", force=True, cfg=None)
+    assert count == 2
+    assert (pages_dir / "002-samtools-view.html").exists()
+    meta = json.loads((vdir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["fetched_pages"] == 2

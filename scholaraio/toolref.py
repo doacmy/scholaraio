@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 _DEFAULT_TOOLREF_DIR = Path("data/toolref")
+_MANIFEST_REQUEST_TIMEOUT = (10, 20)
 
 # ============================================================================
 #  Tool registry — maps tool name to repo/doc-path/format metadata
@@ -151,14 +152,25 @@ def _has_local_docs(tool: str, version: str, cfg: Config | None = None) -> bool:
     if info["format"] == "rst":
         return any((vdir / "src").rglob("*.rst"))
     if info["format"] == "html":
-        pages = list((vdir / "pages").glob("*.html"))
-        if not pages:
+        page_count = _manifest_page_count(vdir) if info.get("source_type") == "manifest" else len(list((vdir / "pages").glob("*.html")))
+        if not page_count:
             return False
         if info.get("source_type") == "manifest":
             expected = len(_build_manifest(tool, version))
-            return len(pages) >= expected
+            return page_count >= expected
         return True
     return False
+
+
+def _manifest_page_count(vdir: Path) -> int:
+    pages_dir = vdir / "pages"
+    if not pages_dir.exists():
+        return 0
+    count = 0
+    for html_path in pages_dir.glob("*.html"):
+        if html_path.with_suffix(".json").exists():
+            count += 1
+    return count
 
 
 def _build_openfoam_manifest(version: str) -> list[dict]:
@@ -991,6 +1003,7 @@ def toolref_fetch(
     tool: str,
     *,
     version: str | None = None,
+    force: bool = False,
     cfg: Config | None = None,
 ) -> int:
     """Fetch documentation for a tool at a specific version.
@@ -1018,7 +1031,7 @@ def toolref_fetch(
     # check if already fetched
     if version:
         vdir = _version_dir(tool, version, cfg)
-        if vdir.exists():
+        if vdir.exists() and not force:
             if _has_local_docs(tool, version, cfg):
                 ui(f"[toolref] {info['display_name']} {version} 文档已存在，跳过拉取")
                 count = _index_tool(tool, version, cfg)
@@ -1029,7 +1042,8 @@ def toolref_fetch(
             import shutil
 
             ui(f"[toolref] 检测到 {info['display_name']} {version} 残缺目录，重新拉取")
-            shutil.rmtree(vdir)
+        elif vdir.exists() and force:
+            ui(f"[toolref] 强制重新拉取 {info['display_name']} {version}")
 
     if source_type == "git":
         # determine git tag
@@ -1098,37 +1112,72 @@ def toolref_fetch(
     elif source_type == "manifest":
         version = version or info["default_version"]
         vdir = _version_dir(tool, version, cfg)
-        vdir.mkdir(parents=True, exist_ok=True)
-        dest = vdir / "pages"
-        import shutil
-
-        if dest.exists():
-            shutil.rmtree(dest)
-        dest.mkdir(exist_ok=True)
+        existing_pages = _manifest_page_count(vdir) if vdir.exists() else 0
         session = requests.Session()
         session.headers.update({"User-Agent": "ScholarAIO/1.3 toolref-fetch"})
         manifest = _build_manifest(tool, version)
         ui(f"[toolref] 正在拉取 {info['display_name']} {version} 官方文档页...")
+        import shutil
+        import tempfile
+
         failures: list[str] = []
-        for idx, item in enumerate(manifest, start=1):
-            try:
-                resp = session.get(item["url"], timeout=60)
-                resp.raise_for_status()
-            except requests.RequestException as e:
-                failures.append(item["url"])
-                _log.warning("拉取失败: %s (%s)", item["url"], e)
-                continue
-            slug = _slugify(item["page_name"])
-            html_path = dest / f"{idx:03d}-{slug}.html"
-            html_path.write_text(resp.text, encoding="utf-8")
-            html_path.with_suffix(".json").write_text(
-                json.dumps(item, ensure_ascii=False, indent=2),
+        with tempfile.TemporaryDirectory(prefix=f"toolref-{tool}-") as tmpdir:
+            staged_vdir = Path(tmpdir) / version
+            dest = staged_vdir / "pages"
+            dest.mkdir(parents=True, exist_ok=True)
+            for idx, item in enumerate(manifest, start=1):
+                try:
+                    resp = session.get(item["url"], timeout=_MANIFEST_REQUEST_TIMEOUT)
+                    resp.raise_for_status()
+                except requests.RequestException as e:
+                    failures.append(item["page_name"])
+                    _log.warning("拉取失败: %s (%s)", item["url"], e)
+                    continue
+                slug = _slugify(item["page_name"])
+                html_path = dest / f"{idx:03d}-{slug}.html"
+                html_path.write_text(resp.text, encoding="utf-8")
+                html_path.with_suffix(".json").write_text(
+                    json.dumps(item, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+
+            fetched_pages = _manifest_page_count(staged_vdir)
+            if failures and fetched_pages == 0:
+                raise RuntimeError(f"拉取 {tool} 文档页失败：{failures[0]}")
+
+            meta = {
+                "tool": tool,
+                "display_name": info["display_name"],
+                "version": version,
+                "format": info["format"],
+                "repo": info.get("repo", ""),
+                "source_type": source_type,
+                "force_refreshed": force,
+                "fetched_pages": fetched_pages,
+                "expected_pages": len(manifest),
+                "failed_pages": len(manifest) - fetched_pages,
+                "failed_page_names": failures,
+            }
+            (staged_vdir / "meta.json").write_text(
+                json.dumps(meta, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
-        if failures and not any(dest.glob("*.html")):
-            raise RuntimeError(f"拉取 {tool} 文档页失败：{failures[0]}")
-        if failures:
-            ui(f"[toolref] 警告：{len(failures)} 个页面拉取失败，已索引其余页面")
+
+            if vdir.exists() and fetched_pages < existing_pages:
+                ui(
+                    f"[toolref] 警告：新抓取仅得到 {fetched_pages}/{len(manifest)} 页，"
+                    f"低于现有缓存 {existing_pages} 页；保留现有缓存"
+                )
+            else:
+                if vdir.exists():
+                    shutil.rmtree(vdir)
+                vdir.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(staged_vdir), str(vdir))
+
+        if failures and _manifest_page_count(vdir) > 0:
+            preview = "、".join(failures[:3])
+            suffix = " 等" if len(failures) > 3 else ""
+            ui(f"[toolref] 警告：{len(failures)} 个页面拉取失败（{preview}{suffix}），已保留更完整的可用缓存")
     else:
         raise ValueError(f"{tool} 不支持的 source_type: {source_type}")
 
@@ -1140,7 +1189,18 @@ def toolref_fetch(
         "format": info["format"],
         "repo": info.get("repo", ""),
         "source_type": source_type,
+        "force_refreshed": force,
     }
+    if source_type == "manifest":
+        meta_path = vdir / "meta.json"
+        if meta_path.exists():
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        else:
+            fetched_pages = _manifest_page_count(vdir)
+            expected_pages = len(_build_manifest(tool, version))
+            meta["fetched_pages"] = fetched_pages
+            meta["expected_pages"] = expected_pages
+            meta["failed_pages"] = expected_pages - fetched_pages
     (vdir / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # create/update current symlink
@@ -1303,6 +1363,7 @@ def toolref_list(tool: str | None = None, *, cfg: Config | None = None) -> list[
             # count pages
             db = tdir / "toolref.db"
             page_count = 0
+            meta: dict = {}
             if db.exists():
                 try:
                     conn = sqlite3.connect(db)
@@ -1314,6 +1375,12 @@ def toolref_list(tool: str | None = None, *, cfg: Config | None = None) -> list[
                     conn.close()
                 except Exception:
                     pass
+            meta_path = vdir / "meta.json"
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                except Exception:
+                    meta = {}
 
             results.append(
                 {
@@ -1322,6 +1389,9 @@ def toolref_list(tool: str | None = None, *, cfg: Config | None = None) -> list[
                     "version": vdir.name,
                     "is_current": vdir.name == current_version,
                     "page_count": page_count,
+                    "source_type": meta.get("source_type", TOOL_REGISTRY.get(t, {}).get("source_type", "git")),
+                    "expected_pages": meta.get("expected_pages"),
+                    "failed_pages": meta.get("failed_pages"),
                 }
             )
 
