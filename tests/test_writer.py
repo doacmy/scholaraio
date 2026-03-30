@@ -11,6 +11,7 @@ from scholaraio.ingest.metadata._writer import (
     _strip_diacritics,
     generate_new_stem,
     metadata_to_dict,
+    refetch_metadata,
     rename_paper,
 )
 
@@ -257,6 +258,48 @@ class TestRenamePaper:
         (correct_dir / "meta.json").write_text(json.dumps(meta))
         result = rename_paper(correct_dir / "meta.json")
         assert result is None  # no change needed
+
+
+class TestRefetchMetadata:
+    def test_refetch_persists_year_only_change(self, tmp_path, monkeypatch):
+        paper_dir = tmp_path / "papers" / "Zhang-2021-Test"
+        paper_dir.mkdir(parents=True)
+        json_path = paper_dir / "meta.json"
+        json_path.write_text(
+            json.dumps(
+                {
+                    "id": "paper-1",
+                    "title": "Test Paper",
+                    "authors": ["Alice Smith"],
+                    "first_author": "Alice Smith",
+                    "first_author_lastname": "Smith",
+                    "year": 2021,
+                    "doi": "",
+                    "journal": "",
+                    "abstract": "Old abstract",
+                    "paper_type": "preprint",
+                    "citation_count": {"semantic_scholar": 0},
+                    "ids": {"arxiv": "2603.25200"},
+                    "api_sources": ["semantic_scholar"],
+                    "references": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        def fake_enrich(meta):
+            meta.year = 2026
+            return meta
+
+        monkeypatch.setattr("scholaraio.ingest.metadata._api.enrich_metadata", fake_enrich)
+
+        changed = refetch_metadata(json_path)
+
+        assert changed is True
+        meta_files = list((tmp_path / "papers").glob("*/meta.json"))
+        assert len(meta_files) == 1
+        data = json.loads(meta_files[0].read_text(encoding="utf-8"))
+        assert data["year"] == 2026
 
     def test_rename_collision_avoidance(self, tmp_path):
         papers = tmp_path / "papers"

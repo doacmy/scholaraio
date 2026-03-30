@@ -9,6 +9,8 @@ from urllib.parse import quote, urlencode
 
 import requests
 
+from scholaraio.sources.arxiv import get_arxiv_paper, normalize_arxiv_ref
+
 from ._extract import _extract_lastname
 from ._models import (
     CR_BASE,
@@ -42,7 +44,8 @@ def query_semantic_scholar(doi: str = "", title: str = "", arxiv_id: str = "") -
         API 返回的论文数据字典，未找到时返回空字典。
     """
     if doi:
-        url = f"{S2_BASE}/DOI:{doi}?fields={S2_FIELDS}"
+        paper_id = quote(f"DOI:{doi}", safe="")
+        url = f"{S2_BASE}/{paper_id}?fields={S2_FIELDS}"
     elif arxiv_id:
         paper_id = quote(f"arXiv:{arxiv_id}", safe="")
         url = f"{S2_BASE}/{paper_id}?fields={S2_FIELDS}"
@@ -269,6 +272,37 @@ def _reconstruct_oa_abstract(inverted_index: dict) -> str:
     return " ".join(w for _, w in word_positions)
 
 
+def _apply_arxiv_metadata(meta: PaperMetadata, arxiv_data: dict) -> None:
+    """Apply authoritative arXiv metadata without letting enrichers overwrite it."""
+    if not arxiv_data:
+        return
+    if arxiv_data.get("title"):
+        meta.title = arxiv_data["title"]
+    if arxiv_data.get("authors"):
+        authors = []
+        for author in arxiv_data["authors"]:
+            author = (author or "").strip()
+            if "," in author:
+                last, first = [part.strip() for part in author.split(",", 1)]
+                author = f"{first} {last}".strip()
+            authors.append(author)
+        meta.authors = authors
+        meta.first_author = meta.authors[0]
+        meta.first_author_lastname = _extract_lastname(meta.first_author)
+    if arxiv_data.get("year"):
+        try:
+            meta.year = int(arxiv_data["year"])
+        except (TypeError, ValueError):
+            pass
+    if arxiv_data.get("abstract"):
+        meta.abstract = arxiv_data["abstract"]
+    if arxiv_data.get("doi") and not meta.doi:
+        meta.doi = arxiv_data["doi"]
+    official_arxiv_id = normalize_arxiv_ref(arxiv_data.get("arxiv_id", ""))
+    if official_arxiv_id:
+        meta.arxiv_id = official_arxiv_id
+
+
 def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
     """通过 API 查询补全和覆盖元数据。
 
@@ -290,6 +324,8 @@ def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
     cr_data: dict = {}
     s2_data: dict = {}
     oa_data: dict = {}
+    arxiv_data: dict = {}
+    arxiv_lookup_used = False
 
     # ---- Tier 1: DOI lookup (all three, DOI queries are not rate-limited) ----
     if meta.doi:
@@ -311,17 +347,19 @@ def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
             else:
                 meta.extraction_method = "doi_lookup"
 
-    # ---- Tier 1.5: arXiv ID lookup via S2 (if no DOI but has arXiv ID) ----
+    # ---- Tier 1.5: arXiv ID lookup (official metadata + S2 enrichment) ----
     if not cr_data and not s2_data and not oa_data and meta.arxiv_id:
         _log.debug("Trying arXiv ID lookup: %s", meta.arxiv_id)
+        arxiv_data = get_arxiv_paper(meta.arxiv_id)
         s2_data = query_semantic_scholar(arxiv_id=meta.arxiv_id)
-        if s2_data:
-            # S2 may return a DOI for the published version
+        if arxiv_data or s2_data:
+            arxiv_lookup_used = True
+            _apply_arxiv_metadata(meta, arxiv_data)
             ext_ids = s2_data.get("externalIds") or {}
             if ext_ids.get("DOI") and not meta.doi:
                 meta.doi = ext_ids["DOI"]
                 _log.debug("arXiv → DOI resolved: %s", meta.doi)
-                # Now do full DOI lookup with all 3 APIs
+            if meta.doi:
                 cr_data = query_crossref(doi=meta.doi)
                 oa_data = query_openalex(doi=meta.doi)
             meta.extraction_method = "arxiv_lookup"
@@ -443,14 +481,14 @@ def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
         if not meta.arxiv_id and ext_ids.get("ArXiv"):
             meta.arxiv_id = ext_ids["ArXiv"]
         # Title: override only if Crossref didn't provide one
-        if not cr_data and s2_data.get("title"):
+        if not cr_data and not arxiv_lookup_used and s2_data.get("title"):
             meta.title = s2_data["title"]
         if not meta.year and s2_data.get("year"):
             meta.year = s2_data["year"]
         if not meta.journal and s2_data.get("venue"):
             meta.journal = s2_data["venue"]
         # Authors: override only if Crossref didn't provide them
-        if not cr_data and s2_data.get("authors"):
+        if not cr_data and not arxiv_lookup_used and s2_data.get("authors"):
             meta.authors = [a.get("name", "") for a in s2_data["authors"]]
             if meta.authors:
                 meta.first_author = meta.authors[0]
@@ -459,7 +497,7 @@ def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
         if not meta.paper_type and s2_data.get("publicationTypes"):
             meta.paper_type = s2_data["publicationTypes"][0]
         # Abstract — S2 gives clean plain text (preferred)
-        if s2_data.get("abstract"):
+        if s2_data.get("abstract") and not (arxiv_lookup_used and arxiv_data.get("abstract")):
             meta.abstract = s2_data["abstract"]
         # References — extract DOIs from S2 references list
         if s2_data.get("references"):

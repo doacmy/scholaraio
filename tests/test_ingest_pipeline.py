@@ -41,6 +41,25 @@ def test_query_semantic_scholar_encodes_old_style_arxiv_id(monkeypatch):
     )
 
 
+def test_query_semantic_scholar_encodes_doi_path_segment(monkeypatch):
+    seen: dict[str, str] = {}
+
+    def fake_get(url: str, timeout: int):
+        seen["url"] = url
+        return _DummyResponse()
+
+    monkeypatch.setattr("scholaraio.ingest.metadata._api.SESSION.get", fake_get)
+
+    query_semantic_scholar(doi="10.1017/S0022112094000431")
+
+    assert seen["url"] == (
+        "https://api.semanticscholar.org/graph/v1/paper/"
+        "DOI%3A10.1017%2FS0022112094000431?fields="
+        "title,abstract,citationCount,year,externalIds,authors,venue,"
+        "publicationTypes,references.externalIds"
+    )
+
+
 def test_collect_existing_ids_includes_arxiv_ids(tmp_path: Path):
     papers_dir = tmp_path / "papers"
     paper_dir = papers_dir / "Imamura-1999-String-Junctions"

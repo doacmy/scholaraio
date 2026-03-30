@@ -159,6 +159,13 @@ def refetch_metadata(json_path: Path) -> bool:
     # Check if anything changed
     changed = False
     for key in (
+        "title",
+        "authors",
+        "first_author",
+        "first_author_lastname",
+        "year",
+        "doi",
+        "journal",
         "citation_count",
         "ids",
         "api_sources",

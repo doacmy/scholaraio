@@ -1,4 +1,4 @@
-"""Unit tests for scholaraio/sources/arxiv.py — search_arxiv() XML parsing.
+"""Unit tests for scholaraio/sources/arxiv.py — search/fetch helpers.
 
 All tests stub requests.get so no network access is required.
 """
@@ -187,3 +187,51 @@ class TestSearchArxivParsing:
             results = search_arxiv("attention")
 
         assert "\n" not in results[0]["title"]
+
+
+class TestNormalizeArxivRef:
+    def test_accepts_bare_id(self):
+        from scholaraio.sources.arxiv import normalize_arxiv_ref
+
+        assert normalize_arxiv_ref("2603.25200") == "2603.25200"
+
+    def test_strips_version_suffix(self):
+        from scholaraio.sources.arxiv import normalize_arxiv_ref
+
+        assert normalize_arxiv_ref("2603.25200v2") == "2603.25200"
+
+    def test_parses_abs_url(self):
+        from scholaraio.sources.arxiv import normalize_arxiv_ref
+
+        assert normalize_arxiv_ref("https://arxiv.org/abs/2603.25200v1") == "2603.25200"
+
+    def test_parses_pdf_url(self):
+        from scholaraio.sources.arxiv import normalize_arxiv_ref
+
+        assert normalize_arxiv_ref("https://arxiv.org/pdf/2603.25200.pdf") == "2603.25200"
+
+
+class TestGetArxivPaperFallback:
+    def test_falls_back_to_abs_page_meta_tags(self):
+        html = """
+        <html><head>
+        <meta name="citation_title" content="Fallback Title" />
+        <meta name="citation_author" content="Alice Smith" />
+        <meta name="citation_author" content="Bob Jones" />
+        <meta name="citation_date" content="2026/03/26" />
+        <meta name="citation_arxiv_id" content="2603.25200" />
+        <meta name="citation_abstract" content="Fallback abstract." />
+        </head></html>
+        """
+
+        with patch("scholaraio.sources.arxiv._query_arxiv_api", return_value=[]):
+            with patch("requests.get", return_value=_mock_response(html)):
+                from scholaraio.sources.arxiv import get_arxiv_paper
+
+                result = get_arxiv_paper("2603.25200")
+
+        assert result["title"] == "Fallback Title"
+        assert result["authors"] == ["Alice Smith", "Bob Jones"]
+        assert result["year"] == "2026"
+        assert result["abstract"] == "Fallback abstract."
+        assert result["arxiv_id"] == "2603.25200"
