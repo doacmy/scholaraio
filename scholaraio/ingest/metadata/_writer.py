@@ -67,6 +67,9 @@ def metadata_to_dict(meta: PaperMetadata) -> dict:
         d["ids"]["doi_url"] = f"https://doi.org/{meta.doi}"
     if meta.publication_number:
         d["ids"]["patent_publication_number"] = meta.publication_number
+    if meta.arxiv_id:
+        d["ids"]["arxiv"] = meta.arxiv_id
+        d["ids"]["arxiv_url"] = f"https://arxiv.org/abs/{meta.arxiv_id}"
     if meta.s2_paper_id:
         d["ids"]["semantic_scholar"] = meta.s2_paper_id
         d["ids"]["semantic_scholar_url"] = f"https://www.semanticscholar.org/paper/{meta.s2_paper_id}"
@@ -141,6 +144,7 @@ def refetch_metadata(json_path: Path) -> bool:
     meta.s2_paper_id = ids.get("semantic_scholar", "")
     meta.openalex_id = ids.get("openalex", "")
     meta.crossref_doi = ids.get("doi", "")
+    meta.arxiv_id = ids.get("arxiv", "")
     meta.publication_number = ids.get("patent_publication_number", "")
 
     enrich_metadata(meta)
