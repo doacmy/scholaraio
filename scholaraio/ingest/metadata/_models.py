@@ -165,6 +165,8 @@ def configure_s2_session(s2_api_key: str) -> None:
     """Set Semantic Scholar API key header for higher rate limits."""
     if s2_api_key:
         SESSION.headers["x-api-key"] = s2_api_key
+    else:
+        SESSION.headers.pop("x-api-key", None)
 
 
 # Retry on connection/SSL errors (common in WSL2 or when hitting APIs rapidly)
