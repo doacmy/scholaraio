@@ -146,3 +146,21 @@ def test_run_one_accepts_hyphenated_mineru_cloud_name(tmp_path, monkeypatch):
 
     assert result["ok"] is True
     assert result["error"] is None
+
+
+def test_run_one_accepts_mixed_case_docling_name(tmp_path, monkeypatch):
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    out_dir = tmp_path / "out"
+
+    monkeypatch.setattr(bench, "_build_docling_command", lambda *_args, **_kwargs: ["docling", "--version"])
+    monkeypatch.setattr(
+        bench.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("popen called")),
+    )
+
+    result = bench.run_one(pdf, bench.RunConfig(parser="Docling"), out_dir)
+
+    assert result["ok"] is False
+    assert result["error"] == "RuntimeError: popen called"

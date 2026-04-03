@@ -87,3 +87,9 @@ def test_resolve_parser_order_auto(monkeypatch):
 def test_resolve_parser_order_auto_disabled():
     order = pdf_fallback.resolve_parser_order(["auto", "docling"], auto_detect=False)
     assert order == ["pymupdf", "docling"]
+
+
+def test_resolve_parser_order_ignores_null_and_non_string_entries(monkeypatch):
+    monkeypatch.setattr(pdf_fallback, "detect_available_parsers", lambda: ["docling", "pymupdf"])
+    order = pdf_fallback.resolve_parser_order(["auto", None, " docling ", 123], auto_detect=True)
+    assert order == ["docling", "pymupdf"]

@@ -663,6 +663,12 @@ def _coerce_str_list(value, *, default: list[str]) -> list[str]:
         text = value.strip()
         return [text] if text else list(default)
     if isinstance(value, (list, tuple)):
-        result = [str(item).strip() for item in value if str(item).strip()]
+        result = []
+        for item in value:
+            if item is None or not isinstance(item, str):
+                continue
+            text = item.strip()
+            if text:
+                result.append(text)
         return result or list(default)
     raise ValueError(f"expected string or list, got {type(value).__name__}")

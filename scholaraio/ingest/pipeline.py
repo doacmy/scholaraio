@@ -222,13 +222,6 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
         table_enable=ctx.cfg.ingest.mineru_enable_table,
     )
 
-    chunk_limit = getattr(ctx.cfg.ingest, "chunk_page_limit", 100)
-    page_count = _get_pdf_page_count(pdf_path)
-    is_long = page_count > chunk_limit
-
-    if is_long:
-        ui(f"Long PDF detected ({page_count} pages > {chunk_limit} limit), splitting...")
-
     result = None
     fallback_auto_detect = getattr(ctx.cfg.ingest, "pdf_fallback_auto_detect", True)
     fallback_order = preferred_parser_order(
@@ -251,6 +244,13 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
         ui(f"已按配置优先使用 {parser_name} 解析。")
         ctx.md_path = md_path
         return StepResult.OK
+
+    chunk_limit = getattr(ctx.cfg.ingest, "chunk_page_limit", 100)
+    page_count = _get_pdf_page_count(pdf_path)
+    is_long = page_count > chunk_limit
+
+    if is_long:
+        ui(f"Long PDF detected ({page_count} pages > {chunk_limit} limit), splitting...")
 
     # Try local MinerU first, fallback to cloud API
     if check_server(ctx.cfg.ingest.mineru_endpoint):

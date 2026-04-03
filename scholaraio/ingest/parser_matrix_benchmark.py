@@ -208,8 +208,9 @@ def _run_cli_parser(
 ) -> dict[str, Any]:
     env = os.environ.copy()
     env.update(cfg.env)
+    parser_name = normalize_parser_name(cfg.parser)
 
-    if cfg.parser == "docling":
+    if parser_name == "docling":
         cmd = _build_docling_command(pdf_path, raw_dir, cfg.options)
     else:  # pragma: no cover - guarded by caller
         raise ValueError(cfg.parser)
@@ -217,7 +218,7 @@ def _run_cli_parser(
     artifacts_path = (
         cfg.options.get("artifacts_path") or cfg.options.get("artifacts-path") or env.get("DOCLING_ARTIFACTS_PATH")
     )
-    if cfg.parser == "docling" and artifacts_path:
+    if parser_name == "docling" and artifacts_path:
         artifacts_dir = Path(str(artifacts_path))
         if not artifacts_dir.exists():
             return {

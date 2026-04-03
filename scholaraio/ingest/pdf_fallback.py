@@ -59,7 +59,13 @@ def convert_pdf_with_fallback(
 
 def resolve_parser_order(parser_order: Iterable[str] | None, *, auto_detect: bool = True) -> list[str]:
     """解析用户配置的降级链，支持 ``auto`` 自动展开与去重。"""
-    raw = [str(p).lower().strip() for p in (parser_order or ["auto"]) if str(p).strip()]
+    raw: list[str] = []
+    for parser in parser_order or ["auto"]:
+        if parser is None or not isinstance(parser, str):
+            continue
+        normalized = parser.lower().strip()
+        if normalized:
+            raw.append(normalized)
     if not raw:
         raw = ["auto"]
 

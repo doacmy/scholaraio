@@ -100,6 +100,10 @@ class TestBuildConfig:
         cfg = _build_config({"ingest": {"pdf_fallback_order": "auto"}}, tmp_path)
         assert cfg.ingest.pdf_fallback_order == ["auto"]
 
+    def test_ingest_fallback_order_ignores_null_and_non_string_entries(self, tmp_path):
+        cfg = _build_config({"ingest": {"pdf_fallback_order": ["auto", None, 123, "docling"]}}, tmp_path)
+        assert cfg.ingest.pdf_fallback_order == ["auto", "docling"]
+
     def test_ingest_fallback_auto_detect_parses_string_bool(self, tmp_path):
         cfg = _build_config({"ingest": {"pdf_fallback_auto_detect": "false"}}, tmp_path)
         assert cfg.ingest.pdf_fallback_auto_detect is False

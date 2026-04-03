@@ -135,3 +135,44 @@ def test_step_mineru_prefers_docling_when_configured(tmp_path, monkeypatch):
     assert fallback_calls[0][2] is not None
     assert fallback_calls[0][2][0] == "docling"
     assert ctx.md_path == tmp_path / "paper.md"
+
+
+def test_step_mineru_skips_page_count_when_preferred_parser_bypasses_mineru(tmp_path, monkeypatch):
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    cfg = Config()
+    cfg.ingest.pdf_preferred_parser = "docling"
+
+    ctx = InboxCtx(
+        pdf_path=pdf,
+        inbox_dir=tmp_path,
+        papers_dir=tmp_path / "papers",
+        existing_dois={},
+        cfg=cfg,
+        opts={},
+    )
+
+    import scholaraio.ingest.mineru as mineru
+    import scholaraio.ingest.pdf_fallback as pdf_fallback
+
+    def _page_count(*_args, **_kwargs):
+        raise AssertionError("page count should not be queried for fallback-only parsers")
+
+    monkeypatch.setattr(mineru, "_get_pdf_page_count", _page_count)
+    monkeypatch.setattr(mineru, "check_server", lambda *_: True)
+    monkeypatch.setattr(
+        pdf_fallback,
+        "convert_pdf_with_fallback",
+        lambda _pdf, md_path, **_kwargs: (
+            md_path.write_text("docling preferred\n", encoding="utf-8"),
+            True,
+            "docling",
+            None,
+        )[1:],
+    )
+
+    result = step_mineru(ctx)
+
+    assert result == StepResult.OK
+    assert ctx.md_path == tmp_path / "paper.md"
