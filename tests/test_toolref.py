@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from scholaraio.toolref import (
     _build_bioinformatics_manifest,
     _build_openfoam_manifest,
@@ -24,6 +26,23 @@ from scholaraio.toolref import (
     toolref_search,
     toolref_show,
 )
+
+
+@pytest.fixture
+def toolref_mod():
+    from scholaraio import toolref as mod
+    from scholaraio.toolref import fetch as fetch_mod
+    from scholaraio.toolref import indexing as indexing_mod
+    from scholaraio.toolref import manifest as manifest_mod
+    from scholaraio.toolref import paths as paths_mod
+
+    return {
+        "api": mod,
+        "paths": paths_mod,
+        "manifest": manifest_mod,
+        "fetch": fetch_mod,
+        "indexing": indexing_mod,
+    }
 
 
 def test_normalize_program_filter_for_qe():
@@ -338,8 +357,10 @@ def test_discover_bioinformatics_manifest_reuses_cached_seed_pages(tmp_path):
     assert "https://samtools.github.io/bcftools/bcftools.html" in prefetched
 
 
-def test_toolref_fetch_bioinformatics_reuses_prefetched_seed_html_for_anchor_pages(tmp_path, monkeypatch):
-    from scholaraio import toolref as mod
+def test_toolref_fetch_bioinformatics_reuses_prefetched_seed_html_for_anchor_pages(tmp_path, monkeypatch, toolref_mod):
+    mod = toolref_mod["api"]
+    paths_mod = toolref_mod["paths"]
+    fetch_mod = toolref_mod["fetch"]
 
     class FakeResponse:
         def __init__(self, text: str):
@@ -355,10 +376,10 @@ def test_toolref_fetch_bioinformatics_reuses_prefetched_seed_html_for_anchor_pag
         def get(self, url, timeout=60):
             raise mod.requests.RequestException(f"unexpected fetch: {url}")
 
-    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(paths_mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
     monkeypatch.setattr(mod.requests, "Session", FakeSession)
     monkeypatch.setattr(
-        mod,
+        fetch_mod.manifest_mod,
         "_discover_bioinformatics_manifest",
         lambda version, session, manifest, cache_vdir=None: (
             [
@@ -376,8 +397,8 @@ def test_toolref_fetch_bioinformatics_reuses_prefetched_seed_html_for_anchor_pag
             },
         ),
     )
-    monkeypatch.setattr(mod, "_index_tool", lambda tool, version, cfg=None: 1)
-    monkeypatch.setattr(mod, "_set_current", lambda tool, version, cfg=None: None)
+    monkeypatch.setattr(fetch_mod, "_index_tool", lambda tool, version, cfg=None: 1)
+    monkeypatch.setattr(fetch_mod.storage_mod, "_set_current", lambda tool, version, cfg=None: None)
 
     count = toolref_fetch("bioinformatics", version="2026-03-curated", force=True, cfg=None)
 
@@ -425,10 +446,10 @@ def test_parse_manifest_html_extracts_main_text(tmp_path):
     assert "simpleFoam -case motorBike" in record["content"]
 
 
-def test_has_local_docs_for_manifest_html(tmp_path, monkeypatch):
-    from scholaraio import toolref as mod
+def test_has_local_docs_for_manifest_html(tmp_path, monkeypatch, toolref_mod):
+    paths_mod = toolref_mod["paths"]
 
-    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(paths_mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
     pages_dir = tmp_path / "openfoam" / "2312" / "pages"
     pages_dir.mkdir(parents=True)
     assert not _has_local_docs("openfoam", "2312")
@@ -506,8 +527,10 @@ def test_parse_manifest_html_uses_dictionary_synopsis(tmp_path):
     assert record["synopsis"] == "fvSchemes dictionary"
 
 
-def test_toolref_fetch_manifest_force_rebuilds_pages(tmp_path, monkeypatch):
-    from scholaraio import toolref as mod
+def test_toolref_fetch_manifest_force_rebuilds_pages(tmp_path, monkeypatch, toolref_mod):
+    mod = toolref_mod["api"]
+    paths_mod = toolref_mod["paths"]
+    fetch_mod = toolref_mod["fetch"]
 
     class FakeResponse:
         def __init__(self, text: str):
@@ -523,10 +546,10 @@ def test_toolref_fetch_manifest_force_rebuilds_pages(tmp_path, monkeypatch):
         def get(self, url, timeout=60):
             return FakeResponse(f"<html><body><main><h1>{url}</h1></main></body></html>")
 
-    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(paths_mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
     monkeypatch.setattr(mod.requests, "Session", FakeSession)
     monkeypatch.setattr(
-        mod,
+        fetch_mod.manifest_mod,
         "_build_manifest",
         lambda tool, version: [
             {
@@ -538,6 +561,8 @@ def test_toolref_fetch_manifest_force_rebuilds_pages(tmp_path, monkeypatch):
             }
         ],
     )
+    monkeypatch.setattr(fetch_mod, "_index_tool", lambda tool, version, cfg=None: 1)
+    monkeypatch.setattr(fetch_mod.storage_mod, "_set_current", lambda tool, version, cfg=None: None)
 
     count = toolref_fetch("openfoam", version="2312", cfg=None)
     assert count == 1
@@ -550,10 +575,10 @@ def test_toolref_fetch_manifest_force_rebuilds_pages(tmp_path, monkeypatch):
     assert not extra.exists()
 
 
-def test_toolref_list_reads_manifest_meta(tmp_path, monkeypatch):
-    from scholaraio import toolref as mod
+def test_toolref_list_reads_manifest_meta(tmp_path, monkeypatch, toolref_mod):
+    paths_mod = toolref_mod["paths"]
 
-    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(paths_mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
     vdir = tmp_path / "openfoam" / "2312"
     vdir.mkdir(parents=True)
     (vdir / "meta.json").write_text(
@@ -577,8 +602,10 @@ def test_toolref_list_reads_manifest_meta(tmp_path, monkeypatch):
     assert entries[0]["failed_pages"] == 2
 
 
-def test_toolref_fetch_manifest_force_keeps_more_complete_cache(tmp_path, monkeypatch):
-    from scholaraio import toolref as mod
+def test_toolref_fetch_manifest_force_keeps_more_complete_cache(tmp_path, monkeypatch, toolref_mod):
+    mod = toolref_mod["api"]
+    paths_mod = toolref_mod["paths"]
+    fetch_mod = toolref_mod["fetch"]
 
     class FakeResponse:
         def __init__(self, text: str):
@@ -596,9 +623,9 @@ def test_toolref_fetch_manifest_force_keeps_more_complete_cache(tmp_path, monkey
                 raise mod.requests.RequestException("boom")
             return FakeResponse(f"<html><body><main><h1>{url}</h1></main></body></html>")
 
-    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(paths_mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
     monkeypatch.setattr(
-        mod,
+        fetch_mod.manifest_mod,
         "_build_manifest",
         lambda tool, version: [
             {
@@ -644,8 +671,8 @@ def test_toolref_fetch_manifest_force_keeps_more_complete_cache(tmp_path, monkey
         encoding="utf-8",
     )
     monkeypatch.setattr(mod.requests, "Session", FakeSession)
-    monkeypatch.setattr(mod, "_index_tool", lambda tool, version, cfg=None: mod._manifest_page_count(vdir))
-    monkeypatch.setattr(mod, "_set_current", lambda tool, version, cfg=None: None)
+    monkeypatch.setattr(fetch_mod, "_index_tool", lambda tool, version, cfg=None: fetch_mod.manifest_mod._manifest_page_count(vdir))
+    monkeypatch.setattr(fetch_mod.storage_mod, "_set_current", lambda tool, version, cfg=None: None)
 
     count = toolref_fetch("bioinformatics", version="2026-03-curated", force=True, cfg=None)
     assert count == 2
@@ -656,8 +683,10 @@ def test_toolref_fetch_manifest_force_keeps_more_complete_cache(tmp_path, monkey
     assert meta["last_fetch_failed_page_names"] == ["samtools/view"]
 
 
-def test_toolref_fetch_manifest_force_preserves_failed_pages_from_existing_cache(tmp_path, monkeypatch):
-    from scholaraio import toolref as mod
+def test_toolref_fetch_manifest_force_preserves_failed_pages_from_existing_cache(tmp_path, monkeypatch, toolref_mod):
+    mod = toolref_mod["api"]
+    paths_mod = toolref_mod["paths"]
+    fetch_mod = toolref_mod["fetch"]
 
     class FakeResponse:
         def __init__(self, text: str):
@@ -675,10 +704,10 @@ def test_toolref_fetch_manifest_force_preserves_failed_pages_from_existing_cache
                 raise mod.requests.RequestException("timeout")
             return FakeResponse(f"<html><body><main><h1>{url}</h1></main></body></html>")
 
-    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(paths_mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
     monkeypatch.setattr(mod.requests, "Session", FakeSession)
     monkeypatch.setattr(
-        mod,
+        fetch_mod.manifest_mod,
         "_build_manifest",
         lambda tool, version: [
             {
@@ -730,6 +759,9 @@ def test_toolref_fetch_manifest_force_preserves_failed_pages_from_existing_cache
         encoding="utf-8",
     )
 
+    monkeypatch.setattr(fetch_mod, "_index_tool", lambda tool, version, cfg=None: 2)
+    monkeypatch.setattr(fetch_mod.storage_mod, "_set_current", lambda tool, version, cfg=None: None)
+
     count = toolref_fetch("openfoam", version="2312", force=True, cfg=None)
     assert count == 2
     assert (pages_dir / "001-openfoam-simpleFoam.html").exists()
@@ -740,8 +772,10 @@ def test_toolref_fetch_manifest_force_preserves_failed_pages_from_existing_cache
     assert meta["last_fetch_failed_page_names"] == ["openfoam/simpleFoam"]
 
 
-def test_toolref_fetch_manifest_uses_fallback_urls(tmp_path, monkeypatch):
-    from scholaraio import toolref as mod
+def test_toolref_fetch_manifest_uses_fallback_urls(tmp_path, monkeypatch, toolref_mod):
+    mod = toolref_mod["api"]
+    paths_mod = toolref_mod["paths"]
+    fetch_mod = toolref_mod["fetch"]
 
     class FakeResponse:
         def __init__(self, text: str):
@@ -761,11 +795,11 @@ def test_toolref_fetch_manifest_uses_fallback_urls(tmp_path, monkeypatch):
                 raise mod.requests.RequestException("timeout")
             return FakeResponse("<html><body><main><h1>minimap2 manual</h1></main></body></html>")
 
-    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(paths_mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
     session = FakeSession()
     monkeypatch.setattr(mod.requests, "Session", lambda: session)
     monkeypatch.setattr(
-        mod,
+        fetch_mod.manifest_mod,
         "_build_manifest",
         lambda tool, version: [
             {
@@ -778,6 +812,8 @@ def test_toolref_fetch_manifest_uses_fallback_urls(tmp_path, monkeypatch):
             }
         ],
     )
+    monkeypatch.setattr(fetch_mod, "_index_tool", lambda tool, version, cfg=None: 1)
+    monkeypatch.setattr(fetch_mod.storage_mod, "_set_current", lambda tool, version, cfg=None: None)
 
     count = toolref_fetch("bioinformatics", version="2026-03-curated", force=True, cfg=None)
 
@@ -1332,12 +1368,13 @@ def test_toolref_search_bioinformatics_bam_indexing_prefers_samtools_index(tmp_p
     assert rows[0]["page_name"] == "samtools/index"
 
 
-def test_toolref_search_openfoam_boosts_yplus_page(tmp_path, monkeypatch):
+def test_toolref_search_openfoam_boosts_yplus_page(tmp_path, monkeypatch, toolref_mod):
     import sqlite3
 
-    from scholaraio import toolref as mod
+    mod = toolref_mod["api"]
+    paths_mod = toolref_mod["paths"]
 
-    monkeypatch.setattr(mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(paths_mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
     tdir = tmp_path / "openfoam"
     vdir = tdir / "2312"
     vdir.mkdir(parents=True)
