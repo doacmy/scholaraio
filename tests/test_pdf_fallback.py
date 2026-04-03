@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from scholaraio.ingest import pdf_fallback
+
+
+def test_convert_pdf_with_fallback_uses_first_success(tmp_path, monkeypatch):
+    pdf = tmp_path / "a.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    md = tmp_path / "a.md"
+
+    monkeypatch.setattr(pdf_fallback, "_run_docling", lambda *_: (False, "docling fail"))
+
+    def _ok(_pdf: Path, out: Path):
+        out.write_text("ok\n", encoding="utf-8")
+        return True, None
+
+    monkeypatch.setattr(pdf_fallback, "_run_pymupdf", _ok)
+
+    ok, parser, err = pdf_fallback.convert_pdf_with_fallback(pdf, md, parser_order=["docling", "pymupdf"])
+    assert ok is True
+    assert parser == "pymupdf"
+    assert err is None
+    assert md.read_text(encoding="utf-8") == "ok\n"
+
+
+def test_convert_pdf_with_fallback_collects_errors(tmp_path, monkeypatch):
+    pdf = tmp_path / "a.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    md = tmp_path / "a.md"
+
+    monkeypatch.setattr(pdf_fallback, "_run_docling", lambda *_: (False, "docling bad"))
+    monkeypatch.setattr(pdf_fallback, "_run_pymupdf", lambda *_: (False, "pymupdf bad"))
+
+    ok, parser, err = pdf_fallback.convert_pdf_with_fallback(pdf, md, parser_order=["docling", "pymupdf"])
+    assert ok is False
+    assert parser is None
+    assert "docling bad" in (err or "")
+    assert "pymupdf bad" in (err or "")
+
+
+def test_pick_and_write_md_picks_longest(tmp_path):
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    (out_dir / "small.md").write_text("a", encoding="utf-8")
+    (out_dir / "big.md").write_text("long markdown", encoding="utf-8")
+
+    md = tmp_path / "final.md"
+    ok, err = pdf_fallback._pick_and_write_md(out_dir, md, "docling")
+    assert ok is True
+    assert err is None
+    assert "long markdown" in md.read_text(encoding="utf-8")
+
+
+def test_pick_and_write_md_preserves_assets(tmp_path):
+    out_dir = tmp_path / "out"
+    doc_dir = out_dir / "doc"
+    images_dir = doc_dir / "images"
+    images_dir.mkdir(parents=True)
+    (doc_dir / "paper.md").write_text("![fig](images/figure.png)\n", encoding="utf-8")
+    (images_dir / "figure.png").write_bytes(b"pngdata")
+
+    md_dir = tmp_path / "final"
+    md_dir.mkdir()
+    md = md_dir / "paper.md"
+
+    ok, err = pdf_fallback._pick_and_write_md(out_dir, md, "docling")
+    assert ok is True
+    assert err is None
+    assert "![fig](images/figure.png)" in md.read_text(encoding="utf-8")
+    assert (md_dir / "images" / "figure.png").read_bytes() == b"pngdata"
+
+
+def test_resolve_parser_order_auto(monkeypatch):
+    monkeypatch.setattr(pdf_fallback, "detect_available_parsers", lambda: ["docling", "pymupdf"])
+    order = pdf_fallback.resolve_parser_order(["auto", "docling", "auto"], auto_detect=True)
+    assert order == ["docling", "pymupdf"]
+
+
+def test_resolve_parser_order_auto_disabled():
+    order = pdf_fallback.resolve_parser_order(["auto", "docling"], auto_detect=False)
+    assert order == ["pymupdf", "docling"]
