@@ -116,8 +116,10 @@ def run_benchmark(
 ) -> dict[str, Any]:
     """Run all configs sequentially against one PDF."""
     if output_root.exists():
-        shutil.rmtree(output_root)
-    output_root.mkdir(parents=True, exist_ok=True)
+        if not output_root.is_dir() or any(output_root.iterdir()):
+            raise ValueError("output_root must be empty or not exist")
+    else:
+        output_root.mkdir(parents=True, exist_ok=True)
 
     runs: list[RunConfig] = []
     for spec in run_specs:
@@ -249,35 +251,58 @@ def _run_cli_parser(
 
     with stdout_path.open("w", encoding="utf-8") as stdout_fh, stderr_path.open("w", encoding="utf-8") as stderr_fh:
         sel = selectors.DefaultSelector()
+        timeout_error: subprocess.TimeoutExpired | None = None
         assert proc.stdout is not None
         assert proc.stderr is not None
         sel.register(proc.stdout, selectors.EVENT_READ, ("stdout", stdout_fh, out_chunks, sys.stdout))
         sel.register(proc.stderr, selectors.EVENT_READ, ("stderr", stderr_fh, err_chunks, sys.stderr))
+        try:
+            while sel.get_map():
+                now = time.monotonic()
+                if now > deadline:
+                    proc.kill()
+                    timeout_error = subprocess.TimeoutExpired(cmd, timeout_sec)
+                    break
 
-        while sel.get_map():
-            now = time.monotonic()
-            if now > deadline:
-                proc.kill()
-                raise subprocess.TimeoutExpired(cmd, timeout_sec)
+                events = sel.select(timeout=1.0)
+                if not events and now - last_heartbeat >= 15:
+                    print(f"[child] still running: {cfg.parser} ({make_run_slug(cfg)})", flush=True)
+                    last_heartbeat = now
 
-            events = sel.select(timeout=1.0)
-            if not events and now - last_heartbeat >= 15:
-                print(f"[child] still running: {cfg.parser} ({make_run_slug(cfg)})", flush=True)
-                last_heartbeat = now
+                for key, _ in events:
+                    stream_name, sink_fh, chunks, mirror = key.data
+                    chunk = os.read(key.fileobj.fileno(), 4096)
+                    if chunk == b"":
+                        sel.unregister(key.fileobj)
+                        key.fileobj.close()
+                        continue
+                    text = chunk.decode("utf-8", errors="replace")
+                    sink_fh.write(text)
+                    sink_fh.flush()
+                    chunks.append(chunk)
+                    print(text, end="", file=mirror, flush=True)
 
-            for key, _ in events:
-                stream_name, sink_fh, chunks, mirror = key.data
-                chunk = os.read(key.fileobj.fileno(), 4096)
-                if chunk == b"":
-                    sel.unregister(key.fileobj)
+            if timeout_error is None:
+                returncode = proc.wait()
+        finally:
+            for stream in (proc.stdout, proc.stderr):
+                if stream is None:
                     continue
-                text = chunk.decode("utf-8", errors="replace")
-                sink_fh.write(text)
-                sink_fh.flush()
-                chunks.append(chunk)
-                print(text, end="", file=mirror, flush=True)
-
-        returncode = proc.wait()
+                try:
+                    sel.unregister(stream)
+                except Exception:
+                    pass
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            sel.close()
+            if timeout_error is not None:
+                try:
+                    proc.wait()
+                except Exception:
+                    pass
+                raise timeout_error
 
     result = {
         "command": " ".join(shlex.quote(part) for part in cmd),
@@ -310,6 +335,10 @@ def _build_docling_command(pdf_path: Path, raw_dir: Path, options: dict[str, Any
         cmd.extend(["--artifacts-path", str(artifacts_path)])
     for key, value in sorted(options.items()):
         if key in {"to", "timeout_sec", "artifacts_path", "artifacts-path"}:
+            continue
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
             continue
         flag = f"--{key.replace('_', '-')}"
         if isinstance(value, bool):
