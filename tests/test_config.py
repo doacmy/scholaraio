@@ -277,9 +277,11 @@ class TestEnsureDirs:
         cfg.ensure_dirs()
         assert cfg.papers_dir.exists()
         assert (tmp_path / "data" / "inbox").exists()
+        assert (tmp_path / "data" / "inbox-proceedings").exists()
         assert (tmp_path / "data" / "inbox-thesis").exists()
         assert (tmp_path / "data" / "inbox-doc").exists()
         assert (tmp_path / "data" / "pending").exists()
+        assert (tmp_path / "data" / "proceedings").exists()
         assert (tmp_path / "workspace").exists()
 
     def test_idempotent(self, tmp_path):

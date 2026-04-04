@@ -303,10 +303,12 @@ class Config:
         for d in (
             self.papers_dir,
             self._root / "data" / "inbox",
+            self._root / "data" / "inbox-proceedings",
             self._root / "data" / "inbox-thesis",
             self._root / "data" / "inbox-patent",
             self._root / "data" / "inbox-doc",
             self._root / "data" / "pending",
+            self._root / "data" / "proceedings",
             self._root / "workspace",
             self.log_file.parent,
             self.metrics_db_path.parent,
