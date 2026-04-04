@@ -143,6 +143,11 @@ _INSTALL_HINTS: dict[str, str] = {
     "pandas": "pip install scholaraio[topics]",
     "endnote_utils": "pip install scholaraio[import]",
     "pyzotero": "pip install scholaraio[import]",
+    "docx": "pip install scholaraio[office]",
+    "pptx": "pip install scholaraio[office]",
+    "openpyxl": "pip install scholaraio[office]",
+    "markitdown": "pip install scholaraio[office]",
+    "fitz": "pip install scholaraio[pdf]",
 }
 
 

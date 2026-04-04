@@ -143,7 +143,7 @@ def step_office_convert(ctx: InboxCtx) -> StepResult:
     try:
         from markitdown import MarkItDown
     except ImportError:
-        _log.error("MarkItDown 未安装，无法转换 Office 文件。请运行: pip install 'markitdown[docx,pptx,xlsx]'")
+        _log.error("MarkItDown 未安装，无法转换 Office 文件。请运行: pip install scholaraio[office]")
         ctx.status = "failed"
         return StepResult.FAIL
 

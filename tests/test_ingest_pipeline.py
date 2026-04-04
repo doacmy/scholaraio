@@ -1,4 +1,4 @@
-"""Regression tests for arXiv-related ingest edge cases."""
+"""Regression tests for ingest pipeline edge cases."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from scholaraio.ingest.metadata._api import query_semantic_scholar
 from scholaraio.ingest.metadata._models import PaperMetadata
-from scholaraio.ingest.pipeline import InboxCtx, StepResult, _collect_existing_ids, step_dedup
+from scholaraio.ingest.pipeline import InboxCtx, StepResult, _collect_existing_ids, step_dedup, step_office_convert
 
 
 class _DummyResponse:
@@ -129,3 +129,37 @@ def test_step_dedup_rejects_duplicate_arxiv_only_preprint(tmp_path: Path, monkey
         "duplicate_of": "Imamura-1999-String-Junctions",
         "arxiv_id": "hep-th/9901001",
     }
+
+
+def test_step_office_convert_reports_scholaraio_office_extra(tmp_path: Path, monkeypatch):
+    office_path = tmp_path / "report.docx"
+    office_path.write_text("dummy", encoding="utf-8")
+
+    errors: list[str] = []
+    monkeypatch.setattr("scholaraio.ingest.pipeline._log.error", lambda msg, *args: errors.append(msg % args if args else msg))
+
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "markitdown":
+            raise ModuleNotFoundError("No module named 'markitdown'", name="markitdown")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    ctx = InboxCtx(
+        pdf_path=None,
+        inbox_dir=tmp_path,
+        papers_dir=tmp_path / "papers",
+        existing_dois={},
+        cfg=SimpleNamespace(_root=tmp_path),
+        opts={"office_path": office_path, "dry_run": False},
+    )
+
+    result = step_office_convert(ctx)
+
+    assert result == StepResult.FAIL
+    assert ctx.status == "failed"
+    assert any("pip install scholaraio[office]" in msg for msg in errors)

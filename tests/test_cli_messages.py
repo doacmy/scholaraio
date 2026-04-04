@@ -264,6 +264,36 @@ class TestImportEndnoteOptionalDeps:
         assert any("pip install scholaraio[import]" in msg for msg in errors)
 
 
+class TestOptionalDependencyHints:
+    def test_office_dependency_hint_uses_scholaraio_extra(self, monkeypatch):
+        errors: list[str] = []
+        monkeypatch.setattr(cli._log, "error", lambda msg, *args: errors.append(msg % args if args else msg))
+
+        try:
+            cli._check_import_error(ModuleNotFoundError("No module named 'docx'", name="docx"))
+        except SystemExit as exc:
+            assert exc.code == 1
+        else:
+            raise AssertionError("expected SystemExit")
+
+        assert any("缺少依赖: docx" in msg for msg in errors)
+        assert any("pip install scholaraio[office]" in msg for msg in errors)
+
+    def test_pdf_dependency_hint_uses_scholaraio_extra(self, monkeypatch):
+        errors: list[str] = []
+        monkeypatch.setattr(cli._log, "error", lambda msg, *args: errors.append(msg % args if args else msg))
+
+        try:
+            cli._check_import_error(ModuleNotFoundError("No module named 'fitz'", name="fitz"))
+        except SystemExit as exc:
+            assert exc.code == 1
+        else:
+            raise AssertionError("expected SystemExit")
+
+        assert any("缺少依赖: fitz" in msg for msg in errors)
+        assert any("pip install scholaraio[pdf]" in msg for msg in errors)
+
+
 class TestMigrateDirsMessages:
     def test_migrate_dirs_preview_message_is_chinese(self, tmp_path, monkeypatch):
         messages: list[str] = []
