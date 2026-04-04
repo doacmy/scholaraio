@@ -400,16 +400,31 @@ def build_proceedings_index(proceedings_root: Path, db_path: Path, rebuild: bool
     """Build a keyword index for proceedings child papers."""
     from scholaraio.proceedings import iter_proceedings_papers
 
+    rows = list(iter_proceedings_papers(proceedings_root))
+    current_proceeding_ids = {str(row["proceeding_id"]) for row in rows}
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(_PROCEEDINGS_SCHEMA)
         if rebuild:
             conn.execute("DELETE FROM proceedings_fts")
+        else:
+            existing_proceeding_ids = {
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT DISTINCT proceeding_id FROM proceedings_fts WHERE proceeding_id IS NOT NULL AND proceeding_id != ''"
+                )
+            }
+            stale_proceeding_ids = existing_proceeding_ids - current_proceeding_ids
+            if stale_proceeding_ids:
+                conn.executemany(
+                    "DELETE FROM proceedings_fts WHERE proceeding_id = ?",
+                    [(proceeding_id,) for proceeding_id in stale_proceeding_ids],
+                )
 
         count = 0
         cleared_proceedings: set[str] = set()
-        for row in iter_proceedings_papers(proceedings_root):
+        for row in rows:
             if not rebuild:
                 proceeding_id = row["proceeding_id"]
                 if proceeding_id not in cleared_proceedings:

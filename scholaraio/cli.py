@@ -40,6 +40,8 @@ cli.py — scholaraio 命令行入口
     scholaraio attach-pdf <paper-id> <path/to/paper.pdf>
     scholaraio citation-check [<file>] [--ws <workspace-name>]
     scholaraio proceedings apply-split <proceeding_dir> <split_plan.json>
+    scholaraio proceedings build-clean-candidates <proceeding_dir>
+    scholaraio proceedings apply-clean <proceeding_dir> <clean_plan.json>
     scholaraio ws init <name>
     scholaraio ws add <name> <paper-refs...> [--search Q] [--topic ID] [--all]
     scholaraio ws remove <name> <paper-refs...>

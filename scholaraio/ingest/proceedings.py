@@ -391,7 +391,7 @@ def apply_proceedings_clean_plan(proceeding_dir: Path, clean_plan: dict | Path) 
     proceeding_meta["clean_status"] = "applied"
     meta_path.write_text(json.dumps(proceeding_meta, ensure_ascii=False, indent=2), encoding="utf-8")
     (proceeding_dir / "clean_plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
-    build_proceedings_index(proceeding_dir.parent, proceeding_dir.parent / "proceedings.db", rebuild=True)
+    build_proceedings_index(proceeding_dir.parent, proceeding_dir.parent / "proceedings.db", rebuild=False)
     return proceeding_dir
 
 
@@ -447,7 +447,7 @@ def apply_proceedings_split_plan(proceeding_dir: Path, split_plan: dict | Path) 
         (paper_dir / "meta.json").write_text(json.dumps(paper_meta, ensure_ascii=False, indent=2), encoding="utf-8")
         (paper_dir / "paper.md").write_text(paper["markdown"], encoding="utf-8")
 
-    build_proceedings_index(proceeding_dir.parent, proceeding_dir.parent / "proceedings.db", rebuild=True)
+    build_proceedings_index(proceeding_dir.parent, proceeding_dir.parent / "proceedings.db", rebuild=False)
     return proceeding_dir
 
 
@@ -487,5 +487,5 @@ def ingest_proceedings_markdown(
         encoding="utf-8",
     )
 
-    build_proceedings_index(proceedings_root, proceedings_root / "proceedings.db", rebuild=True)
+    build_proceedings_index(proceedings_root, proceedings_root / "proceedings.db", rebuild=False)
     return proceeding_dir

@@ -871,7 +871,7 @@ def _download_cloud_result(
     """Download markdown (and images) from cloud API result.
 
     Tries multiple response formats: direct md_content field,
-    full_zip_url (download zip and extract all files), or md_url.
+    full_zip_url (download zip and extract all files), or markdown URLs.
 
     CDN download bypasses HTTP proxy (domestic CDN + proxy = SSL errors).
 
@@ -920,8 +920,8 @@ def _download_cloud_result(
                 _log.debug("failed to download/extract zip result: %s", e)
                 break
 
-    # Direct markdown URL
-    md_url = item.get("md_url")
+    # Direct markdown URL (`md_url` or fallback `full_md_url`)
+    md_url = item.get("md_url") or item.get("full_md_url")
     if md_url:
         attempts = max(1, download_retries)
         for attempt in range(1, attempts + 1):

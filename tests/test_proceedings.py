@@ -137,6 +137,30 @@ def test_build_proceedings_index_incremental_mode_replaces_rows_after_paper_id_c
     assert {r["paper_id"] for r in results} == {"proc-paper-1-rebuilt", "proc-paper-2"}
 
 
+def test_build_proceedings_index_incremental_mode_removes_deleted_volume_rows(tmp_path: Path):
+    proceedings_root = _write_proceedings_fixture(tmp_path)
+    db_path = tmp_path / "proceedings.db"
+
+    first = build_proceedings_index(proceedings_root, db_path, rebuild=True)
+
+    volume_dir = proceedings_root / "Zheng-2024-IUTAM"
+    for path in sorted((volume_dir / "papers").rglob("*"), reverse=True):
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            path.rmdir()
+    (volume_dir / "papers").rmdir()
+    (volume_dir / "meta.json").unlink()
+    volume_dir.rmdir()
+
+    second = build_proceedings_index(proceedings_root, db_path, rebuild=False)
+    results = search_proceedings("granular", db_path, top_k=10)
+
+    assert first == 2
+    assert second == 0
+    assert results == []
+
+
 def test_detect_proceedings_manual_mode_forces_true(tmp_path: Path):
     md_path = tmp_path / "volume.md"
     md_path.write_text("A perfectly ordinary paper body.", encoding="utf-8")
