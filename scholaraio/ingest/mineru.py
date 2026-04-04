@@ -523,7 +523,7 @@ def convert_pdf_cloud(
             result.error = f"PDF 上传失败: {upload_error}"
             result.elapsed_seconds = time.time() - t0
             return result
-    except Exception as e:
+    except (OSError, requests.RequestException) as e:
         result.error = f"PDF 上传失败: {e}"
         result.elapsed_seconds = time.time() - t0
         return result

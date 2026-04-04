@@ -102,6 +102,19 @@ def test_build_and_search_proceedings_index_returns_matching_child_rows(tmp_path
     assert {r["paper_id"] for r in results} == {"proc-paper-1", "proc-paper-2"}
 
 
+def test_build_proceedings_index_incremental_mode_replaces_existing_rows(tmp_path: Path):
+    proceedings_root = _write_proceedings_fixture(tmp_path)
+    db_path = tmp_path / "proceedings.db"
+
+    first = build_proceedings_index(proceedings_root, db_path, rebuild=True)
+    second = build_proceedings_index(proceedings_root, db_path, rebuild=False)
+    results = search_proceedings("granular", db_path, top_k=10)
+
+    assert first == 2
+    assert second == 2
+    assert len(results) == 2
+
+
 def test_detect_proceedings_manual_mode_forces_true(tmp_path: Path):
     md_path = tmp_path / "volume.md"
     md_path.write_text("A perfectly ordinary paper body.", encoding="utf-8")
@@ -137,6 +150,24 @@ def test_detect_proceedings_rejects_regular_single_paper(tmp_path: Path):
         "Alice Smith, Bob Wang\n\n"
         "10.1000/example.single\n\n"
         "This paper studies a single wave packet in compressible flow.\n",
+        encoding="utf-8",
+    )
+
+    detected, reason = detect_proceedings_from_md(md_path)
+
+    assert detected is False
+    assert reason == ""
+    assert looks_like_proceedings_text(md_path.read_text(encoding="utf-8")) is False
+
+
+def test_detect_proceedings_rejects_contents_marker_without_other_volume_signals(tmp_path: Path):
+    md_path = tmp_path / "paper.md"
+    md_path.write_text(
+        "# Boundary layer instability in compressible flow\n\n"
+        "## Contents\n\n"
+        "1. Introduction\n"
+        "2. Results\n\n"
+        "10.1000/example.single\n",
         encoding="utf-8",
     )
 
@@ -334,6 +365,34 @@ def test_apply_proceedings_split_plan_skips_comment_label_variant_and_heading_ab
     meta = json.loads((paper_dir / "meta.json").read_text(encoding="utf-8"))
 
     assert meta["authors"] == ["C.E.Leith"]
+    assert meta["abstract"] == "This paper discusses cellular automata for turbulence simulations."
+
+
+def test_apply_proceedings_split_plan_handles_second_level_abstract_heading(tmp_path: Path):
+    proceedings_root = tmp_path / "data" / "proceedings"
+    proceedings_root.mkdir(parents=True)
+    md_path = tmp_path / "volume.md"
+    md_path.write_text(
+        "# Proceedings of the IUTAM Symposium on Granular Flow\n\n"
+        "# Cellular Automata and Massively Parallel Physics\n"
+        "C.E.Leith\n"
+        "## Abstract\n"
+        "This paper discusses cellular automata for turbulence simulations.\n",
+        encoding="utf-8",
+    )
+
+    proceeding_dir = ingest_proceedings_markdown(proceedings_root, md_path, source_name="volume.pdf")
+    apply_proceedings_split_plan(
+        proceeding_dir,
+        {
+            "volume_title": "Proceedings of the IUTAM Symposium on Granular Flow",
+            "papers": [{"title": "Cellular Automata and Massively Parallel Physics", "start_line": 3, "end_line": 6}],
+        },
+    )
+
+    paper_dir = next((proceeding_dir / "papers").iterdir())
+    meta = json.loads((paper_dir / "meta.json").read_text(encoding="utf-8"))
+
     assert meta["abstract"] == "This paper discusses cellular automata for turbulence simulations."
 
 

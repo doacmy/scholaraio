@@ -409,6 +409,14 @@ def build_proceedings_index(proceedings_root: Path, db_path: Path, rebuild: bool
 
         count = 0
         for row in iter_proceedings_papers(proceedings_root):
+            if not rebuild:
+                conn.execute(
+                    """
+                    DELETE FROM proceedings_fts
+                    WHERE paper_id = ? AND proceeding_id = ?
+                    """,
+                    (row["paper_id"], row["proceeding_id"]),
+                )
             conn.execute(
                 """
                 INSERT INTO proceedings_fts

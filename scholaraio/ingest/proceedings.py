@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 
 from scholaraio.index import build_proceedings_index
+from scholaraio.ingest.metadata import _clean_title_for_filename, _sanitize_for_filename
 from scholaraio.papers import generate_uuid
 
 _TITLE_KEYWORDS = (
@@ -46,7 +47,7 @@ def detect_proceedings_from_md(md_path: Path, *, force: bool = False) -> tuple[b
 
     if any(keyword in lowered for keyword in _TITLE_KEYWORDS):
         return True, "title_keyword"
-    if any(marker in lowered for marker in _TOC_PATTERNS):
+    if any(marker in lowered for marker in _TOC_PATTERNS) and len(set(_DOI_RE.findall(text))) >= 2:
         return True, "table_of_contents"
     if len(set(_DOI_RE.findall(text))) >= 3:
         return True, "multi_doi"
@@ -54,9 +55,8 @@ def detect_proceedings_from_md(md_path: Path, *, force: bool = False) -> tuple[b
 
 
 def _slugify(text: str) -> str:
-    cleaned = re.sub(r"[^\w\u4e00-\u9fff\s-]", "", text, flags=re.UNICODE)
-    cleaned = re.sub(r"\s+", "-", cleaned.strip())
-    return cleaned[:80].strip("-") or "untitled"
+    cleaned = _clean_title_for_filename(text)
+    return _sanitize_for_filename(cleaned, max_bytes=80) or "untitled"
 
 
 def _normalize_title_key(text: str) -> str:
@@ -104,7 +104,7 @@ def _extract_authors_and_abstract(chunk: str, title: str) -> tuple[list[str], st
         normalized_line = line.lstrip("#").strip()
         if normalized_line.lower().startswith("abstract"):
             section = "abstract"
-            abstract_lines.append(re.sub(r"^#?\s*Abstract\.?\s*", "", line, flags=re.IGNORECASE).strip())
+            abstract_lines.append(re.sub(r"^Abstract\.?\s*", "", normalized_line, flags=re.IGNORECASE).strip())
             continue
         if line.startswith("#"):
             break

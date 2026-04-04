@@ -16,13 +16,14 @@ This will:
 4. Deduplicate by DOI
 5. Move to `data/papers/` and update indexes
 
-## Four Inboxes
+## Five Inboxes
 
 | Inbox | Path | Behavior |
 |-------|------|----------|
 | Papers | `data/inbox/` | Standard pipeline with DOI dedup |
 | Proceedings | `data/inbox-proceedings/` | Dedicated proceedings pipeline; stores child papers under `data/proceedings/` |
 | Theses | `data/inbox-thesis/` | Skips DOI check, marks as thesis |
+| Patents | `data/inbox-patent/` | Extracts publication number and deduplicates as patent |
 | Documents | `data/inbox-doc/` | Skips DOI check, LLM-generated title/abstract |
 
 Proceedings are also auto-detected conservatively from the regular `data/inbox/` path. When that happens, ScholarAIO routes the volume into `data/proceedings/` instead of `data/papers/`.
