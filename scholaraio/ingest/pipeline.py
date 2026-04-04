@@ -221,6 +221,10 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
         parse_method=ctx.cfg.ingest.mineru_parse_method,
         formula_enable=ctx.cfg.ingest.mineru_enable_formula,
         table_enable=ctx.cfg.ingest.mineru_enable_table,
+        upload_workers=ctx.cfg.ingest.mineru_upload_workers,
+        upload_retries=ctx.cfg.ingest.mineru_upload_retries,
+        download_retries=ctx.cfg.ingest.mineru_download_retries,
+        poll_timeout=ctx.cfg.ingest.mineru_poll_timeout,
     )
 
     result = None
@@ -1030,6 +1034,10 @@ def _process_inbox(
                 parse_method=cfg.ingest.mineru_parse_method,
                 formula_enable=cfg.ingest.mineru_enable_formula,
                 table_enable=cfg.ingest.mineru_enable_table,
+                upload_workers=cfg.ingest.mineru_upload_workers,
+                upload_retries=cfg.ingest.mineru_upload_retries,
+                download_retries=cfg.ingest.mineru_download_retries,
+                poll_timeout=cfg.ingest.mineru_poll_timeout,
             )
             t_batch_start = time.time()
             batch_results = convert_pdfs_cloud_batch(
@@ -1662,6 +1670,10 @@ def batch_convert_pdfs(
                 parse_method=cfg.ingest.mineru_parse_method,
                 formula_enable=cfg.ingest.mineru_enable_formula,
                 table_enable=cfg.ingest.mineru_enable_table,
+                upload_workers=cfg.ingest.mineru_upload_workers,
+                upload_retries=cfg.ingest.mineru_upload_retries,
+                download_retries=cfg.ingest.mineru_download_retries,
+                poll_timeout=cfg.ingest.mineru_poll_timeout,
             )
 
             batch_results = convert_pdfs_cloud_batch(
@@ -2015,7 +2027,8 @@ def _ingest_proceedings_ctx(ctx: InboxCtx, *, force: bool) -> bool:
     ingest_proceedings_markdown(proceedings_root, ctx.md_path, source_name=source_name)
     _cleanup_inbox(ctx.pdf_path, ctx.md_path, dry_run=ctx.opts.get("dry_run", False))
     ctx.status = "ingested"
-    ui("检测为论文集，已转入 data/proceedings/")
+    ui("检测为论文集，已生成 proceeding.md 和 split_candidates.json。")
+    ui("等待 agent 审阅 split_candidates.json 并生成 split_plan.json，然后再执行后续拆分入库。")
     return True
 
 

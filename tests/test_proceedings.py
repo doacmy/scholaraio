@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from scholaraio.ingest.proceedings import (
+    apply_proceedings_split_plan,
     detect_proceedings_from_md,
     ingest_proceedings_markdown,
     looks_like_proceedings_text,
@@ -168,13 +169,148 @@ def test_ingest_proceedings_markdown_writes_volume_and_child_papers(tmp_path: Pa
     )
 
     meta = json.loads((proceeding_dir / "meta.json").read_text(encoding="utf-8"))
+
+    assert proceeding_dir.exists()
+    assert meta["child_paper_count"] == 0
+    assert meta["split_status"] == "pending_review"
+    assert (proceeding_dir / "split_candidates.json").exists()
+
+
+def test_apply_proceedings_split_plan_writes_child_papers(tmp_path: Path):
+    proceedings_root = tmp_path / "data" / "proceedings"
+    proceedings_root.mkdir(parents=True)
+    md_path = tmp_path / "volume.md"
+    md_path.write_text(
+        "# Proceedings of the IUTAM Symposium on Granular Flow\n\n"
+        "# Wave propagation in porous media\n"
+        "Alice Zheng\n"
+        "Abstract. Wave propagation in porous media with granular damping.\n\n"
+        "# 1 Introduction\nBody A\n\n"
+        "# Shock response of cellular materials\n"
+        "Bo Li\n"
+        "Abstract. Shock response and collapse under granular impact.\n\n"
+        "# 1 Introduction\nBody B\n",
+        encoding="utf-8",
+    )
+
+    proceeding_dir = ingest_proceedings_markdown(
+        proceedings_root,
+        md_path,
+        source_name="Zheng-2024-Proceedings of the IUTAM Symposium.pdf",
+    )
+    apply_proceedings_split_plan(
+        proceeding_dir,
+        {
+            "volume_title": "Proceedings of the IUTAM Symposium on Granular Flow",
+            "papers": [
+                {"title": "Wave propagation in porous media", "start_line": 3, "end_line": 8},
+                {"title": "Shock response of cellular materials", "start_line": 9, "end_line": 14},
+            ],
+        },
+    )
+
+    meta = json.loads((proceeding_dir / "meta.json").read_text(encoding="utf-8"))
     child_dirs = sorted((proceeding_dir / "papers").iterdir())
     child_meta = json.loads((child_dirs[0] / "meta.json").read_text(encoding="utf-8"))
 
-    assert proceeding_dir.exists()
     assert meta["child_paper_count"] == 2
+    assert meta["split_status"] == "applied"
     assert child_meta["proceeding_title"] == meta["title"]
     assert len(child_dirs) == 2
+
+
+def test_apply_proceedings_split_plan_skips_affiliation_lines_before_abstract(tmp_path: Path):
+    proceedings_root = tmp_path / "data" / "proceedings"
+    proceedings_root.mkdir(parents=True)
+    md_path = tmp_path / "volume.md"
+    md_path.write_text(
+        "# Proceedings of the IUTAM Symposium on Granular Flow\n\n"
+        "# Snow settling in turbulence\n"
+        "Jiaqi Li and Jiarong Hong\n\n"
+        "Saint Anthony Falls Laboratory, University of Minnesota\n\n"
+        "Abstract. This paper studies snow settling in atmospheric turbulence.\n\n"
+        "# 1 Introduction\nBody\n",
+        encoding="utf-8",
+    )
+
+    proceeding_dir = ingest_proceedings_markdown(proceedings_root, md_path, source_name="volume.pdf")
+    apply_proceedings_split_plan(
+        proceeding_dir,
+        {
+            "volume_title": "Proceedings of the IUTAM Symposium on Granular Flow",
+            "papers": [{"title": "Snow settling in turbulence", "start_line": 3, "end_line": 9}],
+        },
+    )
+
+    paper_dir = next((proceeding_dir / "papers").iterdir())
+    meta = json.loads((paper_dir / "meta.json").read_text(encoding="utf-8"))
+
+    assert meta["authors"] == ["Jiaqi Li and Jiarong Hong"]
+    assert meta["abstract"] == "This paper studies snow settling in atmospheric turbulence."
+
+
+def test_ingest_proceedings_markdown_prepares_realistic_contents_style_volume(tmp_path: Path):
+    proceedings_root = tmp_path / "data" / "proceedings"
+    proceedings_root.mkdir(parents=True)
+    md_path = tmp_path / "volume.md"
+    md_path.write_text(
+        "# Editors Name\n\n"
+        "# Proceedings of the IUTAM Symposium on Turbulent Structure and Particles-Turbulence Interaction\n\n"
+        "# Contents\n\n"
+        "Two-Phase Structures in High-Reynolds-Number Sand-Laden Wall-Bounded Turbulence 1 "
+        "Xiaojing Zheng, Yanxiong Shi, and Hongyou Liu\n\n"
+        "Wake of a Finite-Size Particle in Wall Turbulence Over a Rough Bed 16 "
+        "Xing Li, S. Balachandar, Hyungoo Lee, and Bofeng Bai\n\n"
+        "# Two-Phase Structures in High-Reynolds-Number Sand-Laden Wall-Bounded Turbulence\n\n"
+        "Xiaojing Zheng, Yanxiong Shi, and Hongyou Liu\n\n"
+        "Abstract. Sandstorms are a gas-solid two-phase wall turbulence.\n\n"
+        "# 1 Introduction\n\n"
+        "Body A\n\n"
+        "# References\n\n"
+        "10.1000/example.1\n\n"
+        "# Wake of a Finite-Size Particle in Wall Turbulence Over a Rough Bed\n\n"
+        "Xing Li, S. Balachandar, Hyungoo Lee, and Bofeng Bai\n\n"
+        "Abstract. This paper studies the wake of a finite-size particle.\n\n"
+        "# 1 Introduction\n\n"
+        "Body B\n\n"
+        "# References\n\n"
+        "10.1000/example.2\n",
+        encoding="utf-8",
+    )
+
+    proceeding_dir = ingest_proceedings_markdown(
+        proceedings_root,
+        md_path,
+        source_name="realistic.pdf",
+    )
+
+    meta = json.loads((proceeding_dir / "meta.json").read_text(encoding="utf-8"))
+
+    assert meta["title"] == "Proceedings of the IUTAM Symposium on Turbulent Structure and Particles-Turbulence Interaction"
+    assert meta["child_paper_count"] == 0
+    assert meta["split_status"] == "pending_review"
+    assert (proceeding_dir / "split_candidates.json").exists()
+
+
+def test_split_candidates_include_case_insensitive_normalized_titles(tmp_path: Path):
+    proceedings_root = tmp_path / "data" / "proceedings"
+    proceedings_root.mkdir(parents=True)
+    md_path = tmp_path / "volume.md"
+    md_path.write_text(
+        "# Proceedings of the IUTAM Symposium on Granular Flow\n\n"
+        "# Contents\n\n"
+        "Wake of a Finite-Size Particle in WALL Turbulence Over a Rough Bed 16 Xing Li\n\n"
+        "# Wake of a Finite-Size Particle in Wall Turbulence Over a Rough Bed\n\n"
+        "Xing Li\n\n"
+        "Abstract. Example.\n",
+        encoding="utf-8",
+    )
+
+    proceeding_dir = ingest_proceedings_markdown(proceedings_root, md_path, source_name="volume.pdf")
+    candidates = json.loads((proceeding_dir / "split_candidates.json").read_text(encoding="utf-8"))
+    heading = next(item for item in candidates["headings"] if item["text"] == "Wake of a Finite-Size Particle in Wall Turbulence Over a Rough Bed")
+
+    assert candidates["normalized_contents_titles"][0] == heading["normalized_text"]
 
 
 def test_pipeline_routes_manual_proceedings_inbox_to_proceedings_library(tmp_path: Path):
@@ -191,6 +327,9 @@ def test_pipeline_routes_manual_proceedings_inbox_to_proceedings_library(tmp_pat
 
     assert any((tmp_path / "data" / "proceedings").iterdir())
     assert not any((tmp_path / "data" / "papers").iterdir())
+    proceeding_dir = next((tmp_path / "data" / "proceedings").iterdir())
+    meta = json.loads((proceeding_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["split_status"] == "pending_review"
 
 
 def test_pipeline_auto_routes_detected_proceedings_from_main_inbox(tmp_path: Path):
@@ -231,13 +370,19 @@ def test_pipeline_keeps_regular_paper_in_main_library(tmp_path: Path):
 def test_fsearch_proceedings_scope_returns_proceedings_results(tmp_path: Path, monkeypatch):
     cfg = _build_config({"ingest": {"extractor": "regex"}}, tmp_path)
     cfg.ensure_dirs()
-    md_path = tmp_path / "data" / "inbox-proceedings" / "volume.md"
+    proceedings_root = tmp_path / "data" / "proceedings"
+    proceedings_root.mkdir(parents=True, exist_ok=True)
+    md_path = tmp_path / "volume.md"
     md_path.write_text(
         "# Proceedings of the IUTAM Symposium on Granular Flow\n\n"
-        "## Paper: Wave propagation in porous media\nAlice Zheng\n10.1000/example.1\nGranular damping in porous waves.\n",
+        "# Wave propagation in porous media\nAlice Zheng\nAbstract. Granular damping in porous waves.\n\n# 1 Introduction\nBody\n",
         encoding="utf-8",
     )
-    run_pipeline(["extract", "dedup", "ingest"], cfg, {"no_api": True})
+    proceeding_dir = ingest_proceedings_markdown(proceedings_root, md_path, source_name="volume.pdf")
+    apply_proceedings_split_plan(
+        proceeding_dir,
+        {"volume_title": "Proceedings of the IUTAM Symposium on Granular Flow", "papers": [{"title": "Wave propagation in porous media", "start_line": 3, "end_line": 6}]},
+    )
 
     messages: list[str] = []
     monkeypatch.setattr(cli, "ui", lambda message="": messages.append(message))
@@ -262,3 +407,48 @@ def test_fsearch_main_scope_excludes_proceedings_results(tmp_path: Path, monkeyp
     joined = "\n".join(messages)
     assert "── [主库] ──" in joined
     assert "proceedings:" not in joined
+
+
+def test_cli_proceedings_apply_split_applies_plan_and_reports_success(tmp_path: Path, monkeypatch):
+    cfg = _build_config({"ingest": {"extractor": "regex"}}, tmp_path)
+    cfg.ensure_dirs()
+    proceedings_root = tmp_path / "data" / "proceedings"
+    proceedings_root.mkdir(parents=True, exist_ok=True)
+    md_path = tmp_path / "volume.md"
+    md_path.write_text(
+        "# Proceedings of the IUTAM Symposium on Granular Flow\n\n"
+        "# Wave propagation in porous media\n"
+        "Alice Zheng\n"
+        "Abstract. Granular damping in porous waves.\n\n"
+        "# 1 Introduction\n"
+        "Body\n",
+        encoding="utf-8",
+    )
+    proceeding_dir = ingest_proceedings_markdown(proceedings_root, md_path, source_name="volume.pdf")
+    split_plan_path = tmp_path / "split_plan.json"
+    split_plan_path.write_text(
+        json.dumps(
+            {
+                "volume_title": "Proceedings of the IUTAM Symposium on Granular Flow",
+                "papers": [{"title": "Wave propagation in porous media", "start_line": 3, "end_line": 8}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    parser = cli._build_parser()
+    args = parser.parse_args(["proceedings", "apply-split", str(proceeding_dir), str(split_plan_path)])
+    messages: list[str] = []
+    monkeypatch.setattr(cli, "ui", lambda message="": messages.append(message))
+
+    args.func(args, cfg)
+
+    meta = json.loads((proceeding_dir / "meta.json").read_text(encoding="utf-8"))
+    child_dirs = sorted((proceeding_dir / "papers").iterdir())
+    joined = "\n".join(messages)
+
+    assert meta["split_status"] == "applied"
+    assert meta["child_paper_count"] == 1
+    assert len(child_dirs) == 1
+    assert "已应用 proceedings split plan" in joined

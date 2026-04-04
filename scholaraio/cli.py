@@ -39,6 +39,7 @@ cli.py — scholaraio 命令行入口
     scholaraio import-zotero [--api-key KEY] [--library-id ID] [--local PATH] [--list-collections] ...
     scholaraio attach-pdf <paper-id> <path/to/paper.pdf>
     scholaraio citation-check [<file>] [--ws <workspace-name>]
+    scholaraio proceedings apply-split <proceeding_dir> <split_plan.json>
     scholaraio ws init <name>
     scholaraio ws add <name> <paper-refs...> [--search Q] [--topic ID] [--all]
     scholaraio ws remove <name> <paper-refs...>
@@ -2077,6 +2078,36 @@ def cmd_fsearch(args: argparse.Namespace, cfg) -> None:
 
 
 # ============================================================================
+#  proceedings
+# ============================================================================
+
+
+def cmd_proceedings(args: argparse.Namespace, cfg) -> None:
+    if args.proceedings_action == "apply-split":
+        from scholaraio.ingest.proceedings import apply_proceedings_split_plan
+
+        proceeding_dir = Path(args.proceeding_dir).expanduser()
+        split_plan = Path(args.split_plan).expanduser()
+
+        if not proceeding_dir.exists():
+            ui(f"proceedings 目录不存在: {proceeding_dir}")
+            return
+        if not split_plan.exists():
+            ui(f"split plan 不存在: {split_plan}")
+            return
+
+        apply_proceedings_split_plan(proceeding_dir, split_plan)
+        meta = json.loads((proceeding_dir / "meta.json").read_text(encoding="utf-8"))
+        ui(
+            f"已应用 proceedings split plan: {proceeding_dir.name} "
+            f"({meta.get('child_paper_count', 0)} 篇)"
+        )
+        return
+
+    ui(f"未知 proceedings 子命令: {args.proceedings_action}")
+
+
+# ============================================================================
 #  arXiv
 # ============================================================================
 
@@ -3251,6 +3282,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="搜索范围（逗号分隔）：main / proceedings / explore:NAME / explore:* / arxiv（默认 main）",
     )
     p_fsearch.add_argument("--top", type=int, default=None, help="每个来源最多返回 N 条（默认 10）")
+
+    # --- proceedings ---
+    p_proc = sub.add_parser("proceedings", help="论文集辅助命令（apply-split 等）")
+    p_proc.set_defaults(func=cmd_proceedings)
+    p_proc_sub = p_proc.add_subparsers(dest="proceedings_action", required=True)
+
+    p_proc_apply = p_proc_sub.add_parser("apply-split", help="对已准备好的 proceedings 应用 split_plan.json")
+    p_proc_apply.add_argument("proceeding_dir", help="proceedings 目录路径")
+    p_proc_apply.add_argument("split_plan", help="split_plan.json 路径")
 
     # --- arxiv ---
     p_arxiv = sub.add_parser("arxiv", help="arXiv 检索与拉取工具")
