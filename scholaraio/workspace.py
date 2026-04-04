@@ -158,6 +158,8 @@ def remove(ws_dir: Path, paper_refs: list[str], db_path: Path) -> list[dict]:
     entries = _read(ws_dir)
     remove_ids: set[str] = set()
     remove_dir_names: set[str] = set()
+    entry_ids = {e["id"] for e in entries}
+    entry_dir_names = {e.get("dir_name") for e in entries}
     for ref in paper_refs:
         record = lookup_paper(db_path, ref)
         if record:
@@ -165,8 +167,10 @@ def remove(ws_dir: Path, paper_refs: list[str], db_path: Path) -> list[dict]:
         else:
             # Fall back to exact workspace-visible identifiers when the index is stale
             # or unavailable, so users can still remove items they see in `ws show`.
-            remove_ids.add(ref)
-            remove_dir_names.add(ref)
+            if ref in entry_ids:
+                remove_ids.add(ref)
+            elif ref in entry_dir_names:
+                remove_dir_names.add(ref)
 
     removed = [e for e in entries if e["id"] in remove_ids or e.get("dir_name") in remove_dir_names]
     if removed:

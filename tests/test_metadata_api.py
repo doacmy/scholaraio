@@ -138,3 +138,35 @@ def test_enrich_metadata_uses_s2_title_and_authors_when_arxiv_lookup_returns_onl
     assert meta.authors == ["Alice Example", "Bob Example"]
     assert meta.first_author == "Alice Example"
     assert meta.extraction_method == "arxiv_lookup"
+
+
+def test_enrich_metadata_normalizes_versioned_arxiv_id_before_arxiv_and_s2_lookup(monkeypatch):
+    seen: dict[str, str] = {}
+
+    def fake_get_arxiv_paper(arxiv_id: str):
+        seen["arxiv"] = arxiv_id
+        return {
+            "title": "Normalized arXiv lookup",
+            "authors": ["Alice Example"],
+            "year": "1999",
+            "abstract": "Official arXiv abstract.",
+            "arxiv_id": arxiv_id,
+            "doi": "",
+        }
+
+    def fake_s2(*, doi="", title="", arxiv_id=""):
+        seen["s2"] = arxiv_id
+        return {"externalIds": {"ArXiv": arxiv_id}, "references": [], "paperId": "paper-123"}
+
+    monkeypatch.setattr("scholaraio.ingest.metadata._api.get_arxiv_paper", fake_get_arxiv_paper)
+    monkeypatch.setattr("scholaraio.ingest.metadata._api.query_crossref", lambda **kwargs: {})
+    monkeypatch.setattr("scholaraio.ingest.metadata._api.query_openalex", lambda **kwargs: {})
+    monkeypatch.setattr("scholaraio.ingest.metadata._api.query_semantic_scholar", fake_s2)
+
+    meta = PaperMetadata(title="Original OCR Title", arxiv_id="hep-th/9901001v3")
+
+    enrich_metadata(meta)
+
+    assert seen == {"arxiv": "hep-th/9901001", "s2": "hep-th/9901001"}
+    assert meta.arxiv_id == "hep-th/9901001"
+    assert meta.extraction_method == "arxiv_lookup"

@@ -41,7 +41,10 @@ def _refresh_manifest_meta(tool: str, info: dict, version: str, force: bool, cfg
         "force_refreshed": force,
     }
     if meta_path.exists():
-        meta.update(json.loads(meta_path.read_text(encoding="utf-8")))
+        try:
+            meta.update(json.loads(meta_path.read_text(encoding="utf-8")))
+        except (OSError, ValueError) as e:
+            _log.warning("读取 toolref meta.json 失败，使用默认元数据重建: %s", e)
     fetched_pages = manifest_mod._manifest_page_count(vdir)
     expected_pages = manifest_mod._expected_manifest_pages(tool, version, cfg)
     meta["fetched_pages"] = fetched_pages

@@ -1047,6 +1047,60 @@ def test_toolref_fetch_manifest_force_preserves_failed_pages_from_existing_cache
     assert meta["last_fetch_failed_page_names"] == ["openfoam/simpleFoam"]
 
 
+def test_toolref_fetch_manifest_force_recovers_from_corrupted_meta_json(tmp_path, monkeypatch, toolref_mod):
+    paths_mod = toolref_mod["paths"]
+    fetch_mod = toolref_mod["fetch"]
+
+    class FakeResponse:
+        def __init__(self, text: str):
+            self.text = text
+
+        def raise_for_status(self):
+            return None
+
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+            self.trust_env = True
+
+        def get(self, url, timeout=60):
+            return FakeResponse("<html><body><main><h1>doc</h1></main></body></html>")
+
+    monkeypatch.setattr(paths_mod, "_DEFAULT_TOOLREF_DIR", tmp_path)
+    monkeypatch.setattr(fetch_mod.requests, "Session", FakeSession)
+    monkeypatch.setattr(
+        fetch_mod.manifest_mod,
+        "_build_manifest",
+        lambda tool, version: [
+            {
+                "program": "samtools",
+                "section": "alignment",
+                "page_name": "samtools/sort",
+                "title": "samtools sort",
+                "url": "https://example.org/sort",
+            }
+        ],
+    )
+
+    vdir = tmp_path / "bioinformatics" / "2026-03-curated"
+    pages_dir = vdir / "pages"
+    pages_dir.mkdir(parents=True)
+    (vdir / "meta.json").write_text("{not valid json", encoding="utf-8")
+
+    monkeypatch.setattr(fetch_mod, "_index_tool", lambda tool, version, cfg=None: 1)
+    monkeypatch.setattr(fetch_mod.storage_mod, "_set_current", lambda tool, version, cfg=None: None)
+
+    count = fetch_mod.toolref_fetch("bioinformatics", version="2026-03-curated", force=True, cfg=None)
+
+    assert count == 1
+    meta = json.loads((vdir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["tool"] == "bioinformatics"
+    assert meta["version"] == "2026-03-curated"
+    assert meta["fetched_pages"] == 1
+    assert meta["failed_pages"] == 0
+    assert (pages_dir / "001-samtools-sort.html").exists()
+
+
 def test_toolref_fetch_manifest_uses_fallback_urls(tmp_path, monkeypatch, toolref_mod):
     paths_mod = toolref_mod["paths"]
     fetch_mod = toolref_mod["fetch"]

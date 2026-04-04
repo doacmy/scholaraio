@@ -333,6 +333,11 @@ def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
     arxiv_data: dict = {}
     arxiv_metadata_applied = False
 
+    if meta.arxiv_id:
+        normalized_arxiv_id = normalize_arxiv_ref(meta.arxiv_id)
+        if normalized_arxiv_id:
+            meta.arxiv_id = normalized_arxiv_id
+
     if meta.arxiv_id and _is_arxiv_datacite_doi(meta.doi):
         meta.doi = ""
 

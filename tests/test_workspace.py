@@ -99,6 +99,22 @@ class TestRemove:
         assert [e["dir_name"] for e in removed] == ["Smith-2023-Test"]
         assert read_paper_ids(ws_dir) == {"bbbb-2222"}
 
+    def test_remove_lookup_miss_does_not_delete_uuid_collision_entry(self, tmp_path, monkeypatch):
+        ws_dir = tmp_path / "ws"
+        create(ws_dir)
+        entries = [
+            {"id": "real-uuid-1", "dir_name": "SharedRef", "added_at": "2024-01-01"},
+            {"id": "SharedRef", "dir_name": "Other-Paper", "added_at": "2024-01-01"},
+        ]
+        (ws_dir / "papers.json").write_text(json.dumps(entries), encoding="utf-8")
+
+        monkeypatch.setattr("scholaraio.index.lookup_paper", lambda db_path, ref: None)
+
+        removed = remove(ws_dir, ["SharedRef"], tmp_path / "index.db")
+
+        assert [e["dir_name"] for e in removed] == ["Other-Paper"]
+        assert read_paper_ids(ws_dir) == {"real-uuid-1"}
+
 
 class TestListWorkspaces:
     """list_workspaces contract: discovers workspace directories."""
