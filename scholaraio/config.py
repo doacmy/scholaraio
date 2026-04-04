@@ -163,8 +163,10 @@ class IngestConfig:
     Attributes:
         extractor: 元数据提取模式，``"regex"`` | ``"auto"`` | ``"llm"`` | ``"robust"``。
         mineru_endpoint: MinerU 本地 API 地址。
-        mineru_cloud_url: MinerU 云 API 基础 URL。
-        mineru_api_key: MinerU 云 API 密钥，建议放 config.local.yaml 或环境变量。
+        mineru_cloud_url: `mineru-open-api` 的 ``--base-url`` 覆盖值。
+            默认值保留官方公网地址，私有部署时可改成自建服务。
+        mineru_api_key: MinerU token，建议放 config.local.yaml 或环境变量。
+            兼容旧字段名；运行时会映射给 ``mineru-open-api`` 的 ``MINERU_TOKEN``。
         mineru_backend_local: 本地 MinerU backend（``pipeline`` | ``vlm-auto-engine`` |
             ``vlm-http-client`` | ``hybrid-auto-engine`` | ``hybrid-http-client``）。
         mineru_model_version_cloud: 云端 PDF 解析 model_version（``pipeline`` | ``vlm``）。
@@ -184,11 +186,11 @@ class IngestConfig:
             建议放 config.local.yaml 或环境变量 ``S2_API_KEY``。
         chunk_page_limit: 超长 PDF 自动切分的页数阈值。超过此值的 PDF 在 MinerU
             转换前自动拆分为多个短 PDF，转换后合并为单个 Markdown。
-        mineru_batch_size: MinerU 云 API 每批提交文件数上限，范围 1-200，默认 20。
-        mineru_upload_workers: MinerU 云端上传并发数，默认 4。
-        mineru_upload_retries: MinerU 云端上传失败时的最大重试次数，默认 3。
-        mineru_download_retries: MinerU 云端结果下载失败时的最大重试次数，默认 3。
-        mineru_poll_timeout: MinerU 云端轮询超时（秒），默认 900。
+        mineru_batch_size: `mineru-open-api` 兼容层的分块大小，默认 20。
+        mineru_upload_workers: 旧云 API 并发配置；为兼容保留。
+        mineru_upload_retries: 旧云 API 上传重试配置；为兼容保留。
+        mineru_download_retries: 旧云 API 下载重试配置；为兼容保留。
+        mineru_poll_timeout: `mineru-open-api` 单次转换超时（秒），默认 900。
         pdf_preferred_parser: 首选 PDF 解析器。默认优先 ``mineru``，也可显式设为
             ``docling`` 或 ``pymupdf`` 跳过 MinerU。
         pdf_fallback_order: MinerU 不可用或解析失败时的替代解析器顺序。
@@ -378,16 +380,18 @@ class Config:
         return os.environ.get("ZOTERO_LIBRARY_ID", "")
 
     def resolved_mineru_api_key(self) -> str:
-        """按优先级查找 MinerU 云 API key。
+        """按优先级查找 MinerU token。
 
-        查找顺序: config ``ingest.mineru_api_key`` → 环境变量 ``MINERU_API_KEY``。
+        查找顺序:
+        config ``ingest.mineru_api_key`` → 环境变量 ``MINERU_TOKEN`` →
+        环境变量 ``MINERU_API_KEY``（旧兼容名）。
 
         Returns:
-            API key 字符串，未找到则返回空字符串。
+            token 字符串，未找到则返回空字符串。
         """
         if self.ingest.mineru_api_key:
             return self.ingest.mineru_api_key
-        return os.environ.get("MINERU_API_KEY", "")
+        return os.environ.get("MINERU_TOKEN", "") or os.environ.get("MINERU_API_KEY", "")
 
     def resolved_s2_api_key(self) -> str:
         """按优先级查找 Semantic Scholar API key。

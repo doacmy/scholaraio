@@ -2696,7 +2696,7 @@ def cmd_attach_pdf(args: argparse.Namespace, cfg) -> None:
     else:
         api_key = cfg.resolved_mineru_api_key()
         if not api_key:
-            ui("MinerU 不可达且无云 API key，改用 fallback 解析器")
+            ui("MinerU 不可达且无 MinerU token，改用 fallback 解析器")
         else:
             from scholaraio.ingest.mineru import convert_pdf_cloud
 

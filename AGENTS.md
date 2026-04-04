@@ -159,7 +159,7 @@ Workflow:
 | `config.py` | Configuration loading (multi-layer YAML override + path resolution + API key lookup) |
 | `papers.py` | Paper path helpers (iterate/build paper directories + `meta.json` read/write + paper UUID generation) |
 | `log.py` | Logging initialization (file + console + session tracking) |
-| `ingest/mineru.py` | PDF -> MinerU Markdown (cloud API / local) |
+| `ingest/mineru.py` | PDF -> MinerU Markdown (local API / `mineru-open-api` cloud CLI) |
 | `ingest/pdf_fallback.py` | PDF fallback parsing (Docling / PyMuPDF) |
 | `ingest/extractor.py` | Metadata extraction (four modes: regex / auto / robust / llm) |
 | `ingest/metadata/` | API completion (Crossref / S2 / OpenAlex), JSON output, file renaming |
@@ -196,7 +196,7 @@ Besides skills, the current CLI also provides several important capabilities wor
 ## Architecture
 
 Main ingest flow:
-- PDFs first try `MinerU` (cloud API / local)
+- PDFs first try `MinerU` (local API / `mineru-open-api` cloud CLI)
 - If `MinerU` is unavailable or fails, processing falls back through `pdf_fallback.py` (`Docling -> PyMuPDF`)
 - Direct `.md` ingestion is also supported, skipping PDF parsing entirely
 - Generated Markdown enters `extractor.py`
@@ -454,7 +454,7 @@ The exact invocation form of skills depends on the host agent or plugin system; 
 ### API Key Notes
 
 - **LLM key** (DeepSeek / OpenAI): required for metadata extraction and content enrichment. Without it, the system degrades to pure regex mode and enrich features are unavailable
-- **MinerU key**: required for MinerU cloud PDF-to-Markdown conversion. Without it, ScholarAIO can still fall back to Docling / PyMuPDF, or ingest manually placed `.md` files
+- **MinerU token**: used by `mineru-open-api extract` for MinerU cloud PDF-to-Markdown conversion. `MINERU_TOKEN` is preferred; `MINERU_API_KEY` remains a compatibility alias. Without it, ScholarAIO can still fall back to Docling / PyMuPDF, or ingest manually placed `.md` files
 - The embedding model (Qwen3-Embedding-0.6B, ~1.2GB) downloads automatically on the first `embed` / `vsearch`. For overseas users, change `embed.source` to `huggingface` in `config.yaml`
 
 ## Key Conventions

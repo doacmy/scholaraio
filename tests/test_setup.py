@@ -195,6 +195,7 @@ def test_check_dep_group_uses_spec_probe_for_embed_deps(monkeypatch):
 def test_check_mineru_reports_actionable_failure(monkeypatch):
     cfg = Config()
     monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "")
+    monkeypatch.setattr("scholaraio.setup.shutil.which", lambda _name: None)
 
     class DummyRequests:
         @staticmethod
@@ -208,7 +209,8 @@ def test_check_mineru_reports_actionable_failure(monkeypatch):
     ok, detail = _check_mineru(cfg, "zh")
 
     assert ok is False
-    assert "免费申请 key" in detail
+    assert "mineru-open-api" in detail
+    assert "token" in detail
     assert "Docker" in detail
 
 
@@ -232,6 +234,7 @@ def test_wizard_parser_auto_choice_shows_advisory_not_override(monkeypatch, caps
     cfg = Config()
     answers = iter(["3", "n"])
     monkeypatch.setattr("builtins.input", lambda *_args, **_kwargs: next(answers))
+    monkeypatch.setattr("scholaraio.setup.shutil.which", lambda name: "/usr/bin/mineru-open-api" if name == "mineru-open-api" else None)
     monkeypatch.setattr("scholaraio.setup._probe_url", lambda url, timeout=2: "mineru.net" in url)
 
     choice = _wizard_parser(cfg, "zh")
@@ -248,6 +251,7 @@ def test_wizard_parser_auto_prefers_configured_mineru_before_probe(monkeypatch, 
     monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "mineru-key")
     answers = iter(["3", "n"])
     monkeypatch.setattr("builtins.input", lambda *_args, **_kwargs: next(answers))
+    monkeypatch.setattr("scholaraio.setup.shutil.which", lambda name: "/usr/bin/mineru-open-api" if name == "mineru-open-api" else None)
     monkeypatch.setattr("scholaraio.setup._probe_url", lambda *_args, **_kwargs: False)
 
     choice = _wizard_parser(cfg, "zh")
@@ -270,6 +274,7 @@ def test_wizard_parser_auto_choice_defaults_to_cloud_key_on_eof(monkeypatch):
     cfg = Config()
     answers = iter(["3", ""])
     monkeypatch.setattr("builtins.input", lambda *_args, **_kwargs: next(answers))
+    monkeypatch.setattr("scholaraio.setup.shutil.which", lambda name: "/usr/bin/mineru-open-api" if name == "mineru-open-api" else None)
     monkeypatch.setattr("scholaraio.setup._probe_url", lambda url, timeout=2: "mineru.net" in url)
 
     choice = _wizard_parser(cfg, "zh")

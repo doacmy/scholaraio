@@ -167,7 +167,7 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
     """PDF → Markdown 转换（MinerU）。
 
     md-only 入库项（无 PDF）自动跳过。已有同名 ``.md`` 时也跳过。
-    本地 MinerU 不可达时自动 fallback 到云 API（需配置 ``mineru_api_key``）。
+    本地 MinerU 不可达时自动 fallback 到 MinerU 云端 CLI（需配置 ``mineru_api_key`` / token）。
     超长 PDF（超过 ``chunk_page_limit`` 页）自动切分后逐段转换再合并。
 
     Args:
@@ -255,7 +255,7 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
     if not local_mineru_available:
         cloud_api_key = ctx.cfg.resolved_mineru_api_key()
         if not cloud_api_key:
-            _log.warning("MinerU unreachable and no cloud API key, trying fallback parsers")
+            _log.warning("MinerU unreachable and no MinerU token, trying fallback parsers")
             ok, parser_name, fallback_err = convert_pdf_with_fallback(
                 pdf_path,
                 md_path,
@@ -277,7 +277,7 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
     if is_long:
         ui(f"检测到长 PDF（{page_count} 页，超过 {chunk_limit} 页限制），正在分片处理...")
 
-    # Try local MinerU first, fallback to cloud API
+    # Try local MinerU first, fallback to MinerU cloud CLI
     if local_mineru_available:
         if is_long:
             result = _convert_long_pdf(pdf_path, mineru_opts, chunk_size=chunk_limit)
@@ -286,7 +286,7 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
     else:
         from scholaraio.ingest.mineru import convert_pdf_cloud
 
-        _log.debug("local MinerU unreachable, using cloud API")
+        _log.debug("local MinerU unreachable, using MinerU cloud CLI")
         if is_long:
             result = _convert_long_pdf_cloud(
                 pdf_path,
@@ -989,10 +989,10 @@ def _process_inbox(
 
         if not check_server(cfg.ingest.mineru_endpoint):
             if cfg.resolved_mineru_api_key():
-                _log.debug("local MinerU unreachable, will use cloud API")
+                _log.debug("local MinerU unreachable, will use MinerU cloud CLI")
                 use_cloud_batch = True
             else:
-                _log.error("MinerU unreachable (local: %s, no cloud API key)", cfg.ingest.mineru_endpoint)
+                _log.error("MinerU unreachable (local: %s, no MinerU token)", cfg.ingest.mineru_endpoint)
                 sys.exit(1)
 
     extra_info = []
@@ -1589,7 +1589,7 @@ def batch_convert_pdfs(
     if not use_local:
         api_key = cfg.resolved_mineru_api_key()
         if not api_key:
-            ui("MinerU 不可达且无云 API key，改用 fallback 解析器继续批量转换")
+            ui("MinerU 不可达且无 MinerU token，改用 fallback 解析器继续批量转换")
 
     ui(f"\n开始批量转换 {len(to_convert)} 个 PDF...")
 
