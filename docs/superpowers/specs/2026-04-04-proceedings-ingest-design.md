@@ -50,13 +50,19 @@ data/proceedings/
     │       ├── meta.json
     │       ├── paper.md
     │       └── images/
-    └── index/
-        ├── proceedings.db
-        ├── faiss.index
-        └── faiss_ids.json
 ```
 
 `<Proceeding-Dir>` represents the volume. Each child under `papers/` represents one extracted paper from that volume.
+
+Global proceedings indexes live alongside the proceedings root rather than inside each volume directory:
+
+```text
+data/proceedings/
+├── proceedings.db
+├── faiss.index
+├── faiss_ids.json
+└── <Proceeding-Dir>/
+```
 
 ### Search
 

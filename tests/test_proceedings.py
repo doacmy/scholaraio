@@ -6,6 +6,7 @@ from pathlib import Path
 from scholaraio import cli
 from scholaraio.config import _build_config
 from scholaraio.index import build_proceedings_index, search_proceedings
+from scholaraio.ingest import pipeline
 from scholaraio.ingest.pipeline import run_pipeline
 from scholaraio.ingest.proceedings import (
     apply_proceedings_clean_plan,
@@ -478,6 +479,46 @@ def test_pipeline_routes_manual_proceedings_inbox_to_proceedings_library(tmp_pat
     )
 
     run_pipeline(["extract", "dedup", "ingest"], cfg, {"no_api": True})
+
+    assert any((tmp_path / "data" / "proceedings").iterdir())
+    assert not any((tmp_path / "data" / "papers").iterdir())
+    proceeding_dir = next((tmp_path / "data" / "proceedings").iterdir())
+    meta = json.loads((proceeding_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["split_status"] == "pending_review"
+
+
+def test_pipeline_routes_forced_proceedings_pdf_right_after_mineru(tmp_path: Path, monkeypatch):
+    cfg = _build_config({"ingest": {"extractor": "regex"}}, tmp_path)
+    cfg.ensure_dirs()
+    pdf_path = tmp_path / "data" / "inbox-proceedings" / "volume.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake proceedings")
+
+    def fake_mineru(ctx: pipeline.InboxCtx) -> pipeline.StepResult:
+        md_path = ctx.inbox_dir / (ctx.pdf_path.stem + ".md")
+        md_path.write_text(
+            "# Proceedings of the IUTAM Symposium on Granular Flow\n\n"
+            "# Contents\n\n"
+            "Wave propagation in porous media 1 Alice Zheng\n\n"
+            "# Wave propagation in porous media\n"
+            "Alice Zheng\n"
+            "Abstract. Granular damping in porous waves.\n",
+            encoding="utf-8",
+        )
+        ctx.md_path = md_path
+        return pipeline.StepResult.OK
+
+    def fail_if_called(_ctx: pipeline.InboxCtx) -> pipeline.StepResult:
+        raise AssertionError("regular paper flow should not continue after forced proceedings routing")
+
+    from scholaraio.ingest import mineru as mineru_mod
+
+    monkeypatch.setattr(mineru_mod, "check_server", lambda _endpoint: True)
+    monkeypatch.setattr(pipeline.STEPS["mineru"], "fn", fake_mineru)
+    monkeypatch.setattr(pipeline.STEPS["extract"], "fn", fail_if_called)
+    monkeypatch.setattr(pipeline.STEPS["dedup"], "fn", fail_if_called)
+    monkeypatch.setattr(pipeline.STEPS["ingest"], "fn", fail_if_called)
+
+    run_pipeline(["mineru", "extract", "dedup", "ingest"], cfg, {"no_api": True})
 
     assert any((tmp_path / "data" / "proceedings").iterdir())
     assert not any((tmp_path / "data" / "papers").iterdir())

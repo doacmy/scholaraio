@@ -399,21 +399,25 @@ def _put_with_retry(url: str, pdf_path: Path, *, timeout: int, max_retries: int)
     for attempt in range(1, attempts + 1):
         try:
             with open(pdf_path, "rb") as f:
-                put_resp = requests.put(url, data=f, timeout=timeout)
-            if put_resp.status_code in (200, 201):
-                return None
-            if put_resp.status_code in {408, 429} or put_resp.status_code >= 500:
-                last_error = f"HTTP {put_resp.status_code}"
-                if attempt < attempts:
-                    _sleep_backoff(attempt)
-                    continue
-            return f"HTTP {put_resp.status_code}"
-        except requests.RequestException as exc:
-            last_error = str(exc)
-            if attempt < attempts and _is_retriable_request_error(exc):
+                try:
+                    put_resp = requests.put(url, data=f, timeout=timeout)
+                except requests.RequestException as exc:
+                    last_error = str(exc)
+                    if attempt < attempts and _is_retriable_request_error(exc):
+                        _sleep_backoff(attempt)
+                        continue
+                    return str(exc)
+        except OSError as exc:
+            return str(exc)
+
+        if put_resp.status_code in (200, 201):
+            return None
+        if put_resp.status_code in {408, 429} or put_resp.status_code >= 500:
+            last_error = f"HTTP {put_resp.status_code}"
+            if attempt < attempts:
                 _sleep_backoff(attempt)
                 continue
-            return str(exc)
+        return f"HTTP {put_resp.status_code}"
     return last_error
 
 

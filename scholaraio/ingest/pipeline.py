@@ -1123,7 +1123,7 @@ def _process_inbox(
             existing_pub_nums=existing_pub_nums,
             existing_arxiv_ids=existing_arxiv_ids,
         )
-        if is_proceedings and _ingest_proceedings_ctx(ctx, force=True):
+        if is_proceedings and ctx.md_path and _ingest_proceedings_ctx(ctx, force=True):
             stats["ingested"] += 1
             continue
         for step_name in file_steps:
@@ -1131,6 +1131,10 @@ def _process_inbox(
                 result = STEPS[step_name].fn(ctx)
             step_times[step_name] = step_times.get(step_name, 0) + t.elapsed
             _log.debug("%s: %.1fs", step_name, t.elapsed)
+            if is_proceedings and step_name == "mineru" and result == StepResult.OK and ctx.md_path:
+                if _ingest_proceedings_ctx(ctx, force=True):
+                    result = StepResult.FAIL
+                    break
             if step_name == "extract":
                 detected, _reason = _detect_proceedings(ctx)
                 if detected and _ingest_proceedings_ctx(ctx, force=False):

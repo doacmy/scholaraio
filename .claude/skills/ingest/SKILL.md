@@ -46,12 +46,12 @@ scholaraio pipeline <preset> [--dry-run] [--no-api] [--force] [--inspect]
 - `--steps STEPS` — 自定义步骤序列（逗号分隔），如 `--steps toc,l3,index`
 - `--list` — 列出所有可用步骤和预设
 
-3. pipeline 会依次处理五个 inbox 目录：
+3. pipeline 当前会依次处理五个 inbox 目录：
    - `data/inbox/` — 普通论文（有 DOI 才入库，无 DOI 且非 thesis 转 pending）
-   - `data/inbox-patent/` — 专利文献（按公开号去重，自动标记 patent，跳过 DOI 去重）
    - `data/inbox-thesis/` — 学位论文（跳过 DOI 去重，自动标记 thesis）
-   - `data/inbox-proceedings/` — 论文集（强制按 proceedings 处理；普通 `data/inbox/` 里也会做自动识别）
+   - `data/inbox-patent/` — 专利文献（按公开号去重，自动标记 patent，跳过 DOI 去重）
    - `data/inbox-doc/` — 非论文文档（技术报告、讲义、Word/Excel/PPT、标准文档等，跳过 DOI 去重，LLM 生成标题/摘要）
+   - `data/inbox-proceedings/` — 论文集（强制按 proceedings 处理；普通 `data/inbox/` 里也会做自动识别）
 
 4. 论文集（proceedings）采用半自动两阶段流程：
    - 第一阶段：`scholaraio pipeline ingest` 只负责把 PDF/MD 转成 `data/proceedings/<Volume>/proceeding.md`，并生成 `split_candidates.json`
@@ -113,13 +113,13 @@ scholaraio proceedings apply-clean <proceeding_dir> <clean_plan.json>
 → 执行 `pipeline full`
 
 用户说："我有几份技术报告放在 inbox-doc 里了"
-→ 执行 `pipeline ingest`（pipeline 自动处理四个 inbox 目录）
+→ 执行 `pipeline ingest`（pipeline 自动处理五个 inbox 目录）
 
 用户说："我把一个 Word 文档放进 inbox-doc 了"
 → 执行 `pipeline ingest`（自动用 MarkItDown 转换 DOCX）
 
 用户说："我有几篇专利放在 inbox-patent 了"
-→ 执行 `pipeline ingest`（自动处理四个 inbox 目录，专利按公开号去重）
+→ 执行 `pipeline ingest`（自动处理五个 inbox 目录，专利按公开号去重）
 
 用户说："我有一本文集放在 inbox-proceedings 里"
 → 先执行 `pipeline ingest`，等生成 `split_candidates.json` 后由 agent 审阅，再执行 `scholaraio proceedings apply-split ...`
