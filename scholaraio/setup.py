@@ -124,6 +124,10 @@ _S: dict[str, dict[Lang, str]] = {
         "en": "  Existing MinerU token detected; treat MinerU cloud path as available before network probing.",
         "zh": "  检测到现有 MinerU token；在网络探测前先视为 MinerU 云路径可用。",
     },
+    "parser_choice_auto_cli_without_token": {
+        "en": "  MinerU CLI is available, but no MinerU API token is configured yet; add one later if you want cloud mode.",
+        "zh": "  检测到 MinerU CLI 可用，但尚未配置 MinerU API Token；如需使用云端模式，请稍后在配置中填写。",
+    },
     "reachability_yes": {"en": "reachable", "zh": "可达"},
     "reachability_no": {"en": "unreachable", "zh": "不可达"},
     "availability_yes": {"en": "available", "zh": "可用"},
@@ -683,8 +687,11 @@ def _wizard_parser(cfg: Config, lang: Lang) -> ParserChoice:
 
     print(t("parser_choice_auto", lang))
     mineru_available, mineru_cloud_only = _wizard_mineru_available(cfg)
-    if mineru_cloud_only:
+    mineru_token_configured = bool(cfg.resolved_mineru_api_key())
+    if mineru_cloud_only and mineru_token_configured:
         print(t("parser_choice_auto_configured_mineru", lang))
+    elif mineru_cloud_only:
+        print(t("parser_choice_auto_cli_without_token", lang))
     hf_ok = _probe_url(HUGGINGFACE_URL)
     print(f"    MinerU: {t('availability_yes', lang) if mineru_available else t('availability_no', lang)}")
     print(f"    Hugging Face: {t('reachability_yes', lang) if hf_ok else t('reachability_no', lang)}")

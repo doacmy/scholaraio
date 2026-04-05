@@ -259,6 +259,7 @@ def test_wizard_parser_auto_choice_shows_advisory_not_override(monkeypatch, caps
     monkeypatch.setattr(
         "scholaraio.setup.shutil.which", lambda name: "/usr/bin/mineru-open-api" if name == "mineru-open-api" else None
     )
+    monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "")
     monkeypatch.setattr("scholaraio.setup._probe_url", lambda url, timeout=2: "mineru.net" in url)
 
     choice = _wizard_parser(cfg, "zh")
@@ -266,6 +267,8 @@ def test_wizard_parser_auto_choice_shows_advisory_not_override(monkeypatch, caps
     assert choice.parser == "mineru"
     assert choice.needs_mineru_key is True
     out = capsys.readouterr().out
+    assert "检测到现有 MinerU token" not in out
+    assert "尚未配置 MinerU API Token" in out
     assert "建议优先使用 MinerU" in out
     assert "如果你已经确定要用另一个" in out
 

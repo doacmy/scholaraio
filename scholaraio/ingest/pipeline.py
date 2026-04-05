@@ -1031,6 +1031,7 @@ def _process_inbox(
     if use_cloud_batch and needs_mineru and not dry_run:
         from scholaraio.ingest.mineru import _plan_cloud_chunking
 
+        normalize_batch_assets = any(step_name != "mineru" for step_name in inbox_steps)
         default_chunk_size = getattr(cfg.ingest, "chunk_page_limit", 100)
         pdfs_to_convert = []
         for e in entries.values():
@@ -1074,11 +1075,18 @@ def _process_inbox(
             # Move namespaced assets back to per-stem structure
             for br in batch_results:
                 did = br.pdf_path.stem
-                # Rename <data_id>_images → images dir for this stem
-                namespaced_images = inbox_dir / f"{did}_images"
-                if namespaced_images.is_dir():
-                    target = inbox_dir / f"{did}_mineru_images"
-                    namespaced_images.rename(target)
+                target = inbox_dir / f"{did}_mineru_images"
+                if normalize_batch_assets:
+                    # Normalize cloud assets into the legacy inbox layout so later
+                    # extract/dedup/ingest steps can reuse the existing asset mover.
+                    namespaced_images = inbox_dir / f"{did}_images"
+                    if namespaced_images.is_dir():
+                        namespaced_images.rename(target)
+                    nested_images = br.md_path.parent / "images" if br.md_path else None
+                    if nested_images and nested_images.is_dir() and nested_images != target:
+                        if target.exists():
+                            shutil.rmtree(target)
+                        shutil.move(str(nested_images), str(target))
                 if not br.success:
                     _log.error("MinerU batch failed for %s: %s", br.pdf_path.name, br.error)
                     continue

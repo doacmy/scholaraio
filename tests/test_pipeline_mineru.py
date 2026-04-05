@@ -407,6 +407,110 @@ def test_process_inbox_cloud_batch_preserves_nested_markdown_result(tmp_path, mo
     assert observed["md_path"] == nested_md
 
 
+def test_process_inbox_cloud_batch_normalizes_nested_images_for_ingest_assets(tmp_path, monkeypatch):
+    inbox_dir = tmp_path / "inbox"
+    inbox_dir.mkdir()
+    pdf = inbox_dir / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    nested_md = inbox_dir / "paper" / "index.md"
+    nested_md.parent.mkdir(parents=True)
+    nested_md.write_text("![img](images/fig.png)\n", encoding="utf-8")
+    nested_images = nested_md.parent / "images"
+    nested_images.mkdir()
+    (nested_images / "fig.png").write_bytes(b"png")
+
+    cfg = Config()
+    cfg._root = tmp_path
+    monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "token")
+
+    import scholaraio.ingest.mineru as mineru
+    import scholaraio.ingest.pipeline as pipeline
+
+    monkeypatch.setattr(mineru, "check_server", lambda *_: False)
+    monkeypatch.setattr(mineru, "_plan_cloud_chunking", lambda *_args, **_kwargs: (False, 600, ""))
+    monkeypatch.setattr(
+        mineru,
+        "convert_pdfs_cloud_batch",
+        lambda *_args, **_kwargs: [ConvertResult(pdf_path=pdf, md_path=nested_md, success=True)],
+    )
+
+    observed: dict[str, object] = {}
+    original_extract = pipeline.STEPS["extract"].fn
+
+    def fake_extract(ctx):
+        observed["md_path"] = ctx.md_path
+        observed["images_dir"] = inbox_dir / "paper_mineru_images"
+        assert observed["images_dir"].is_dir() is True
+        assert (observed["images_dir"] / "fig.png").exists()
+        ctx.status = "skipped"
+        return StepResult.OK
+
+    monkeypatch.setattr(pipeline.STEPS["extract"], "fn", fake_extract)
+
+    try:
+        _process_inbox(
+            inbox_dir,
+            tmp_path / "papers",
+            tmp_path / "pending",
+            {},
+            ["mineru", "extract"],
+            cfg,
+            {},
+            False,
+            [],
+        )
+    finally:
+        monkeypatch.setattr(pipeline.STEPS["extract"], "fn", original_extract)
+
+    assert observed["md_path"] == nested_md
+
+
+def test_process_inbox_cloud_batch_keeps_images_for_mineru_only(tmp_path, monkeypatch):
+    inbox_dir = tmp_path / "inbox"
+    inbox_dir.mkdir()
+    pdf = inbox_dir / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    md_path = inbox_dir / "paper.md"
+    images_dir = inbox_dir / "images"
+
+    cfg = Config()
+    cfg._root = tmp_path
+    monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "token")
+
+    import scholaraio.ingest.mineru as mineru
+
+    monkeypatch.setattr(mineru, "check_server", lambda *_: False)
+    monkeypatch.setattr(mineru, "_plan_cloud_chunking", lambda *_args, **_kwargs: (False, 600, ""))
+
+    def fake_convert(*_args, **_kwargs):
+        md_path.write_text("![img](images/fig.png)\n", encoding="utf-8")
+        images_dir.mkdir()
+        (images_dir / "fig.png").write_bytes(b"png")
+        return [ConvertResult(pdf_path=pdf, md_path=md_path, success=True)]
+
+    monkeypatch.setattr(
+        mineru,
+        "convert_pdfs_cloud_batch",
+        fake_convert,
+    )
+
+    _process_inbox(
+        inbox_dir,
+        tmp_path / "papers",
+        tmp_path / "pending",
+        {},
+        ["mineru"],
+        cfg,
+        {},
+        False,
+        [],
+    )
+
+    assert md_path.exists() is True
+    assert images_dir.is_dir() is True
+    assert (images_dir / "fig.png").exists()
+
+
 def test_step_mineru_prefers_docling_when_configured(tmp_path, monkeypatch):
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(b"%PDF-1.4\n")
