@@ -159,7 +159,7 @@ Workflow:
 |------|------|
 | `config.py` | Configuration loading (multi-layer YAML override + path resolution + API key lookup) |
 | `papers.py` | Paper path helpers (iterate/build paper directories + `meta.json` read/write + paper UUID generation) |
-| `log.py` | Logging initialization (file + console + session tracking) |
+| `log.py` | Runtime logging + user-facing terminal output (`ui()`) + session tracking |
 | `ingest/mineru.py` | PDF -> MinerU Markdown (local API / `mineru-open-api` cloud CLI) |
 | `ingest/pdf_fallback.py` | PDF fallback parsing (Docling / PyMuPDF) |
 | `ingest/extractor.py` | Metadata extraction (four modes: regex / auto / robust / llm) |
