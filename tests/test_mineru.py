@@ -9,6 +9,7 @@ from scholaraio.ingest.mineru import (
     ConvertResult,
     _convert_chunk_cloud,
     _convert_long_pdf_cloud,
+    _locate_cloud_markdown_output,
     _plan_cloud_chunking,
     _resolve_cloud_model_version,
     convert_pdf_cloud,
@@ -389,3 +390,21 @@ def test_convert_pdf_cloud_skips_when_markdown_exists_in_nested_layout(tmp_path,
 
     assert result.success is True
     assert result.md_path == nested_md
+
+
+def test_locate_cloud_markdown_output_does_not_reuse_unrelated_single_markdown(tmp_path):
+    out_dir = tmp_path / "out"
+    unrelated_md = out_dir / "other" / "index.md"
+    unrelated_md.parent.mkdir(parents=True)
+    unrelated_md.write_text("other\n", encoding="utf-8")
+
+    assert _locate_cloud_markdown_output(out_dir, "paper") is None
+
+
+def test_locate_cloud_markdown_output_matches_nested_index_for_requested_stem(tmp_path):
+    out_dir = tmp_path / "out"
+    nested_md = out_dir / "paper" / "index.md"
+    nested_md.parent.mkdir(parents=True)
+    nested_md.write_text("paper\n", encoding="utf-8")
+
+    assert _locate_cloud_markdown_output(out_dir, "paper") == nested_md

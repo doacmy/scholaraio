@@ -558,10 +558,10 @@ def _locate_cloud_markdown_output(out_dir: Path, stem: str) -> Path | None:
             return candidate
 
     matches = sorted(path for path in out_dir.rglob("*.md") if path.is_file())
-    if len(matches) == 1:
-        return matches[0]
     for match in matches:
         if match.stem == stem:
+            return match
+        if match.stem == "index" and match.parent.name == stem:
             return match
     return None
 

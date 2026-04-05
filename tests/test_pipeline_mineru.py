@@ -4,7 +4,7 @@ from pathlib import Path
 
 from scholaraio.config import Config
 from scholaraio.ingest.mineru import ConvertResult
-from scholaraio.ingest.pipeline import InboxCtx, StepResult, batch_convert_pdfs, step_mineru
+from scholaraio.ingest.pipeline import InboxCtx, StepResult, _process_inbox, batch_convert_pdfs, step_mineru
 
 
 def test_step_mineru_falls_back_without_cloud_key(tmp_path, monkeypatch):
@@ -353,6 +353,58 @@ def test_batch_convert_pdfs_cloud_batch_moves_markdown_relative_images(tmp_path,
     assert stats == {"converted": 1, "failed": 0, "skipped": 0}
     assert (paper_dir / "paper.md").read_text(encoding="utf-8") == "![img](images/fig.png)\n"
     assert (paper_dir / "images" / "fig.png").exists()
+
+
+def test_process_inbox_cloud_batch_preserves_nested_markdown_result(tmp_path, monkeypatch):
+    inbox_dir = tmp_path / "inbox"
+    inbox_dir.mkdir()
+    pdf = inbox_dir / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    nested_md = inbox_dir / "paper" / "index.md"
+    nested_md.parent.mkdir(parents=True)
+    nested_md.write_text("nested batch ok\n", encoding="utf-8")
+
+    cfg = Config()
+    cfg._root = tmp_path
+    monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "token")
+
+    import scholaraio.ingest.mineru as mineru
+    import scholaraio.ingest.pipeline as pipeline
+
+    monkeypatch.setattr(mineru, "check_server", lambda *_: False)
+    monkeypatch.setattr(mineru, "_plan_cloud_chunking", lambda *_args, **_kwargs: (False, 600, ""))
+    monkeypatch.setattr(
+        mineru,
+        "convert_pdfs_cloud_batch",
+        lambda *_args, **_kwargs: [ConvertResult(pdf_path=pdf, md_path=nested_md, success=True)],
+    )
+
+    observed: dict[str, Path | None] = {}
+    original_extract = pipeline.STEPS["extract"].fn
+
+    def fake_extract(ctx):
+        observed["md_path"] = ctx.md_path
+        ctx.status = "skipped"
+        return StepResult.OK
+
+    monkeypatch.setattr(pipeline.STEPS["extract"], "fn", fake_extract)
+
+    try:
+        _process_inbox(
+            inbox_dir,
+            tmp_path / "papers",
+            tmp_path / "pending",
+            {},
+            ["mineru", "extract"],
+            cfg,
+            {},
+            False,
+            [],
+        )
+    finally:
+        monkeypatch.setattr(pipeline.STEPS["extract"], "fn", original_extract)
+
+    assert observed["md_path"] == nested_md
 
 
 def test_step_mineru_prefers_docling_when_configured(tmp_path, monkeypatch):

@@ -1081,11 +1081,10 @@ def _process_inbox(
                     namespaced_images.rename(target)
                 if not br.success:
                     _log.error("MinerU batch failed for %s: %s", br.pdf_path.name, br.error)
-            # Update entries with generated .md paths
-            for stem, e in entries.items():
-                md_check = inbox_dir / (stem + ".md")
-                if md_check.exists() and e["md"] is None:
-                    e["md"] = md_check
+                    continue
+                entry = entries.get(did)
+                if entry is not None and entry["md"] is None and br.md_path and br.md_path.exists():
+                    entry["md"] = br.md_path
 
     # ---- Per-file pipeline (remaining steps, or all steps if local MinerU) ----
     # If batch MinerU was used, skip mineru step per-file (md already exists)
