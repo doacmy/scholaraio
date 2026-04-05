@@ -408,3 +408,12 @@ def test_locate_cloud_markdown_output_matches_nested_index_for_requested_stem(tm
     nested_md.write_text("paper\n", encoding="utf-8")
 
     assert _locate_cloud_markdown_output(out_dir, "paper") == nested_md
+
+
+def test_locate_cloud_markdown_output_ignores_generic_root_markdown_in_shared_output_dir(tmp_path):
+    out_dir = tmp_path / "out"
+    generic_md = out_dir / "full.md"
+    generic_md.parent.mkdir(parents=True)
+    generic_md.write_text("generic\n", encoding="utf-8")
+
+    assert _locate_cloud_markdown_output(out_dir, "paper") is None

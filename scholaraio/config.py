@@ -188,7 +188,8 @@ class IngestConfig:
             的 PDF 在转换前自动拆分为多个短 PDF，转换后合并为单个 Markdown。
             云端 MinerU 另外还会遵循 600 页 / 200MB 的官方单文件限制。
         mineru_batch_size: `mineru-open-api` 兼容层的分块大小，默认 20。
-        mineru_upload_workers: 旧云 API 并发配置；为兼容保留。
+        mineru_upload_workers: 云端 CLI / `mineru-open-api` 兼容层的并发配置。
+            对分块后的云端转换仍生效，用于限制同时进行的转换任务数。
         mineru_upload_retries: 旧云 API 上传重试配置；为兼容保留。
         mineru_download_retries: 旧云 API 下载重试配置；为兼容保留。
         mineru_poll_timeout: `mineru-open-api` 单次转换超时（秒），默认 900。

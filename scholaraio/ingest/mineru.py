@@ -550,8 +550,6 @@ def _locate_cloud_markdown_output(out_dir: Path, stem: str) -> Path | None:
         out_dir / f"{stem}.md",
         out_dir / stem / f"{stem}.md",
         out_dir / stem / "index.md",
-        out_dir / "full.md",
-        out_dir / "result.md",
     ]
     for candidate in candidates:
         if candidate.exists():

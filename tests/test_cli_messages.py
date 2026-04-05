@@ -566,6 +566,7 @@ class TestAttachPdfFallback:
         cli.cmd_attach_pdf(args, cfg)
 
         assert calls == [(paper_dir / "input.pdf", paper_dir / "paper.md")]
+        assert (paper_dir / "paper.md").read_text(encoding="utf-8") == "preferred attach ok\n"
 
     def test_attach_pdf_cloud_does_not_split_when_under_new_limits(self, tmp_path, monkeypatch):
         paper_dir = tmp_path / "papers" / "Smith-2023-Test"
