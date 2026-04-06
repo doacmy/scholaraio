@@ -63,8 +63,9 @@ scholaraio setup check --lang zh
 - 如果用户已经明确知道要用哪个解析器，**不要替用户改主意**，直接按用户选择继续配置
 - 如果用户不知道选哪个：
   - 测试本地 `MinerU` 服务、`mineru-open-api`、MinerU token 状态，以及 `https://huggingface.co` 可达性
-  - **只要 MinerU 路径可走，就默认优先推荐 `MinerU`**
-  - 仅当 MinerU 本地服务不可达、CLI/token 也不可用时，才改为优先建议 `Docling`
+  - **只要网络能跑通 MinerU 路径，就默认优先推荐 `MinerU`**；这里的“MinerU 路径可走”包括：本地服务可达，或 `mineru-open-api` 已安装且可继续走免费 token 的云端路径
+  - **次优先才是询问用户是否打算自行本地部署 MinerU**；不要先问“要不要本地部署”再决定推荐谁
+  - 仅当 MinerU 本地服务不可达，且 `mineru-open-api` / 免费 token 云路径也走不通时，才改为优先建议 `Docling`
   - 推荐时要明确说明：这是建议，不是替用户做决定；如果用户已有偏好，以用户选择为准
   - **必须把检测结果原样转述给用户**，至少包括：
     - 本地 MinerU 服务是否可达
@@ -117,7 +118,8 @@ scholaraio setup check --lang zh
 
 ### 部署引导
 - **MinerU**
-  - 若推荐 `MinerU`，继续问用户是否打算本地部署
+  - 若推荐 `MinerU`，默认先说明：云端路径可直接继续，且免费 token 可注册申请
+  - 在说明完“优先推荐 MinerU”和“免费 token 路径”之后，**再**问用户是否打算本地部署
   - 若打算本地部署，给出官方 Quick Start、Docker 部署、GitHub 链接，并提示本地模型/ModelScope 方案
   - 若不打算本地部署，明确告诉用户去申请免费 token
 - **Docling**

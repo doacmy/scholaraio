@@ -144,9 +144,13 @@ _S: dict[str, dict[Lang, str]] = {
         "en": "  Existing MinerU token detected; treat MinerU cloud path as available before network probing.",
         "zh": "  检测到现有 MinerU token；在网络探测前先视为 MinerU 云路径可用。",
     },
+    "parser_choice_auto_token_without_cli": {
+        "en": "  Existing MinerU token detected, but `mineru-open-api` is still missing; install it first (usually `pip install -e .` or `pip install mineru-open-api`), then continue with MinerU.",
+        "zh": "  检测到现有 MinerU token，但当前还缺少 `mineru-open-api`；请先安装它（通常直接 `pip install -e .` 或 `pip install mineru-open-api`），再继续走 MinerU。",
+    },
     "parser_choice_auto_cli_without_token": {
-        "en": "  MinerU CLI is available, but no MinerU API token is configured yet; add one later if you want cloud mode.",
-        "zh": "  检测到 MinerU CLI 可用，但尚未配置 MinerU API Token；如需使用云端模式，请稍后在配置中填写。",
+        "en": "  MinerU CLI is available, but no MinerU API token is configured yet; register the free token later if you want cloud mode.",
+        "zh": "  检测到 MinerU CLI 可用，但尚未配置 MinerU API Token；如需使用云端模式，请稍后注册免费 token 并填写。",
     },
     "reachability_yes": {"en": "reachable", "zh": "可达"},
     "reachability_no": {"en": "unreachable", "zh": "不可达"},
@@ -253,11 +257,36 @@ MINERU_DOCKER_URL = "https://opendatalab.github.io/MinerU/quick_start/docker_dep
 DOCLING_INSTALL_URL = "https://docling-project.github.io/docling/getting_started/installation/"
 DOCLING_CLI_URL = "https://docling-project.github.io/docling/reference/cli/"
 HUGGINGFACE_URL = "https://huggingface.co"
+DEFAULT_PDF_PARSER = "mineru"
 
 
 def t(key: str, lang: Lang) -> str:
     """Translate a string key to the specified language."""
     return _S.get(key, {}).get(lang, key)
+
+
+@dataclass
+class PromptResult:
+    text: str
+    from_eof: bool = False
+
+
+@dataclass
+class MinerUStatus:
+    ok: bool
+    detail: str
+    recommendable: bool
+    cloud_only: bool
+    cli_available: bool
+    token_configured: bool
+
+
+def _prompt_result(prompt: str) -> PromptResult:
+    """Read one prompt and preserve whether EOF was hit."""
+    try:
+        return PromptResult(input(prompt).strip(), from_eof=False)
+    except EOFError:
+        return PromptResult("", from_eof=True)
 
 
 def _prompt_text(prompt: str) -> str:
@@ -266,10 +295,7 @@ def _prompt_text(prompt: str) -> str:
     This keeps setup usable when driven by agents or piped stdin where the
     input stream may end before all optional prompts are answered.
     """
-    try:
-        return input(prompt).strip()
-    except EOFError:
-        return ""
+    return _prompt_result(prompt).text
 
 
 # ============================================================================
@@ -420,13 +446,13 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
         results.append(CheckResult(t("llm_key", lang), False, t("not_set", lang)))
 
     # MinerU
-    mineru_ok, mineru_detail = _check_mineru(cfg, lang)
-    results.append(CheckResult(t("mineru", lang), mineru_ok, mineru_detail))
+    mineru_status = _detect_mineru(cfg, lang)
+    results.append(CheckResult(t("mineru", lang), mineru_status.ok, mineru_status.detail))
     docling_ok, docling_detail = _check_docling(lang)
     results.append(CheckResult(t("docling", lang), docling_ok, docling_detail))
     hf_ok, hf_detail = _check_huggingface(lang)
     results.append(CheckResult(t("huggingface", lang), hf_ok, hf_detail))
-    parser_name, reason = recommend_pdf_parser(mineru_ok, hf_ok, lang)
+    parser_name, reason = recommend_pdf_parser(mineru_status.recommendable, hf_ok, lang)
     results.append(CheckResult(t("parser_recommendation", lang), True, f"{parser_name}: {reason}"))
 
     # Contact email
@@ -505,34 +531,98 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
 
 def _check_mineru(cfg: Config, lang: Lang) -> tuple[bool, str]:
     """Check MinerU availability (local server or cloud CLI + token)."""
+    status = _detect_mineru(cfg, lang)
+    return status.ok, status.detail
+
+
+def _detect_mineru(cfg: Config, lang: Lang) -> MinerUStatus:
+    """Collect MinerU status for both diagnostics and recommendation logic."""
+    cli_path = shutil.which("mineru-open-api")
+    token_configured = bool(cfg.resolved_mineru_api_key())
+
     try:
         import requests as _req
 
         r = _req.get(cfg.ingest.mineru_endpoint, timeout=2)
         if r.status_code < 500:
-            return True, f"local server @ {cfg.ingest.mineru_endpoint}"
+            return MinerUStatus(
+                ok=True,
+                detail=f"local server @ {cfg.ingest.mineru_endpoint}",
+                recommendable=True,
+                cloud_only=False,
+                cli_available=bool(cli_path),
+                token_configured=token_configured,
+            )
     except Exception:
         pass
 
-    cloud_token = cfg.resolved_mineru_api_key()
-    cli_path = shutil.which("mineru-open-api")
-    if cloud_token and cli_path:
-        return True, f"mineru-open-api @ {cli_path} + token " + t("configured", lang)
-    if cloud_token and not cli_path:
+    if token_configured and cli_path:
+        return MinerUStatus(
+            ok=True,
+            detail=f"mineru-open-api @ {cli_path} + token " + t("configured", lang),
+            recommendable=True,
+            cloud_only=True,
+            cli_available=True,
+            token_configured=True,
+        )
+
+    if cli_path and not token_configured:
         if lang == "zh":
-            return False, "已配置 MinerU token，但未安装 mineru-open-api → pip install mineru-open-api"
-        return False, "MinerU token configured, but mineru-open-api is not installed → pip install mineru-open-api"
+            detail = (
+                f"检测到 mineru-open-api @ {cli_path}，建议优先使用 MinerU；"
+                f"如需云端精准解析，请注册免费 token：{MINERU_TOKEN_URL}"
+            )
+        else:
+            detail = (
+                f"detected mineru-open-api @ {cli_path}; prefer MinerU. "
+                f"Register the free token for cloud mode: {MINERU_TOKEN_URL}"
+            )
+        return MinerUStatus(
+            ok=False,
+            detail=detail,
+            recommendable=True,
+            cloud_only=True,
+            cli_available=True,
+            token_configured=False,
+        )
+
+    if token_configured and not cli_path:
+        if lang == "zh":
+            detail = (
+                "已配置 MinerU token，但未安装 mineru-open-api"
+                f" → pip install mineru-open-api | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+            )
+        else:
+            detail = (
+                "MinerU token configured, but mineru-open-api is not installed"
+                f" → pip install mineru-open-api | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+            )
+        return MinerUStatus(
+            ok=False,
+            detail=detail,
+            recommendable=True,
+            cloud_only=True,
+            cli_available=False,
+            token_configured=True,
+        )
 
     if lang == "zh":
-        return (
-            False,
+        detail = (
             "未配置 MinerU token / CLI，且本地 MinerU 服务不可达"
-            f" → 安装 CLI: pip install mineru-open-api | token: {MINERU_TOKEN_URL} | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}",
+            f" → 安装 CLI: pip install mineru-open-api | token: {MINERU_TOKEN_URL} | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
         )
-    return (
-        False,
-        "MinerU token / CLI not configured and local MinerU service is unreachable"
-        f" → install CLI: pip install mineru-open-api | token: {MINERU_TOKEN_URL} | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}",
+    else:
+        detail = (
+            "MinerU token / CLI not configured and local MinerU service is unreachable"
+            f" → install CLI: pip install mineru-open-api | token: {MINERU_TOKEN_URL} | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+        )
+    return MinerUStatus(
+        ok=False,
+        detail=detail,
+        recommendable=False,
+        cloud_only=False,
+        cli_available=False,
+        token_configured=False,
     )
 
 
@@ -574,21 +664,8 @@ def _wizard_mineru_available(cfg: Config) -> tuple[bool, bool]:
         A tuple of ``(available, cloud_only)`` where ``cloud_only`` means the
         detected path requires a MinerU token instead of local deployment.
     """
-    try:
-        import requests as _req
-
-        r = _req.get(cfg.ingest.mineru_endpoint, timeout=2)
-        if r.status_code < 500:
-            return True, False
-    except Exception:
-        pass
-
-    cli_available = bool(shutil.which("mineru-open-api"))
-    if bool(cfg.resolved_mineru_api_key()) and cli_available:
-        return True, True
-    if cli_available and _probe_url(MINERU_TOKEN_URL):
-        return True, True
-    return False, False
+    status = _detect_mineru(cfg, "zh")
+    return status.recommendable, status.cloud_only
 
 
 def recommend_pdf_parser(mineru_available: bool, huggingface_reachable: bool, lang: Lang) -> tuple[str, str]:
@@ -696,7 +773,11 @@ def _wizard_deps(lang: Lang) -> None:
         else:
             msg = t("install_prompt", lang).format(group=group, pkgs=", ".join(status.missing))
             print(msg)
-            ans = _prompt_text(t("yn", lang)).lower()
+            answer = _prompt_result(t("yn", lang))
+            ans = answer.text.lower()
+            if answer.from_eof:
+                print(t("skip", lang))
+                continue
             if ans in ("", "y", "yes"):
                 print(t("installing", lang).format(group=group))
                 ret = subprocess.run(
@@ -734,12 +815,12 @@ def _wizard_parser(cfg: Config, lang: Lang) -> ParserChoice:
     choice = _prompt_text("  > ")
     if choice == "1":
         print(t("parser_choice_mineru", lang))
+        print(t("mineru_cloud_note", lang))
         use_local = _prompt_yes_no(t("mineru_local_prompt", lang), lang, default=False)
         print(t("mineru_guide_title", lang))
         print(t("mineru_guide_body", lang))
         if use_local:
             return ParserChoice(parser="mineru", needs_mineru_key=False)
-        print(t("mineru_cloud_note", lang))
         return ParserChoice(parser="mineru", needs_mineru_key=True)
     if choice == "2":
         print(t("parser_choice_docling", lang))
@@ -748,11 +829,13 @@ def _wizard_parser(cfg: Config, lang: Lang) -> ParserChoice:
         return ParserChoice(parser="docling", needs_mineru_key=False)
 
     print(t("parser_choice_auto", lang))
-    mineru_available, mineru_cloud_only = _wizard_mineru_available(cfg)
-    mineru_token_configured = bool(cfg.resolved_mineru_api_key())
-    if mineru_cloud_only and mineru_token_configured:
+    mineru_status = _detect_mineru(cfg, lang)
+    mineru_available = mineru_status.recommendable
+    if mineru_status.token_configured and not mineru_status.cli_available:
+        print(t("parser_choice_auto_token_without_cli", lang))
+    elif mineru_status.cloud_only and mineru_status.token_configured:
         print(t("parser_choice_auto_configured_mineru", lang))
-    elif mineru_cloud_only:
+    elif mineru_status.cloud_only:
         print(t("parser_choice_auto_cli_without_token", lang))
     hf_ok = _probe_url(HUGGINGFACE_URL)
     print(f"    MinerU: {t('availability_yes', lang) if mineru_available else t('availability_no', lang)}")
@@ -762,12 +845,12 @@ def _wizard_parser(cfg: Config, lang: Lang) -> ParserChoice:
     if parser_name == "MinerU":
         print(t("parser_recommend_mineru", lang).format(reason=reason))
         print(t("parser_recommend_override", lang))
+        print(t("mineru_cloud_note", lang))
         use_local = _prompt_yes_no(t("mineru_local_prompt", lang), lang, default=False)
         print(t("mineru_guide_title", lang))
         print(t("mineru_guide_body", lang))
         if use_local:
             return ParserChoice(parser="mineru", needs_mineru_key=False)
-        print(t("mineru_cloud_note", lang))
         return ParserChoice(parser="mineru", needs_mineru_key=True)
 
     print(t("parser_recommend_docling", lang).format(reason=reason))
@@ -780,7 +863,8 @@ def _wizard_parser(cfg: Config, lang: Lang) -> ParserChoice:
 def _prompt_yes_no(prompt: str, lang: Lang, *, default: bool = True) -> bool:
     """Simple bilingual yes/no prompt."""
     suffix = " [Y/n] " if default else " [y/N] "
-    ans = _prompt_text(prompt + suffix).lower()
+    answer = _prompt_result(prompt + suffix)
+    ans = answer.text.lower()
     if not ans:
         return default
     return ans in ("y", "yes")
@@ -799,26 +883,25 @@ def _wizard_keys(root: Path, lang: Lang, parser_choice: ParserChoice | None = No
 
     changed = False
     ingest_local_raw = local_data.get("ingest")
-    if not isinstance(ingest_local_raw, dict):
-        ingest_local: dict[str, object] = {}
-        local_data["ingest"] = ingest_local
-        if ingest_local_raw is not None:
-            changed = True
-    else:
-        ingest_local = ingest_local_raw
+    ingest_local: dict[str, object] = ingest_local_raw if isinstance(ingest_local_raw, dict) else {}
+    if ingest_local_raw is not None and not isinstance(ingest_local_raw, dict):
+        changed = True
 
     llm_local_raw = local_data.get("llm")
-    if not isinstance(llm_local_raw, dict):
-        llm_local: dict[str, object] = {}
-        local_data["llm"] = llm_local
-        if llm_local_raw is not None:
-            changed = True
-    else:
-        llm_local = llm_local_raw
-
-    if parser_choice is not None and ingest_local.get("pdf_preferred_parser") != parser_choice.parser:
-        ingest_local["pdf_preferred_parser"] = parser_choice.parser
+    llm_local: dict[str, object] = llm_local_raw if isinstance(llm_local_raw, dict) else {}
+    if llm_local_raw is not None and not isinstance(llm_local_raw, dict):
         changed = True
+
+    if parser_choice is not None:
+        existing_parser = ingest_local.get("pdf_preferred_parser")
+        desired_parser = parser_choice.parser
+        if desired_parser != DEFAULT_PDF_PARSER:
+            if existing_parser != desired_parser:
+                ingest_local["pdf_preferred_parser"] = desired_parser
+                changed = True
+        elif "pdf_preferred_parser" in ingest_local:
+            ingest_local.pop("pdf_preferred_parser", None)
+            changed = True
 
     # LLM key
     print(t("llm_key_prompt", lang))
@@ -842,12 +925,27 @@ def _wizard_keys(root: Path, lang: Lang, parser_choice: ParserChoice | None = No
         ingest_local["contact_email"] = email
         changed = True
 
+    if llm_local:
+        local_data["llm"] = llm_local
+    else:
+        local_data.pop("llm", None)
+
+    if ingest_local:
+        local_data["ingest"] = ingest_local
+    else:
+        local_data.pop("ingest", None)
+
     if changed:
-        local_path.write_text(
-            yaml.dump(local_data, allow_unicode=True, default_flow_style=False),
-            encoding="utf-8",
-        )
-        print(t("key_saved", lang))
+        if local_data:
+            local_path.write_text(
+                yaml.dump(local_data, allow_unicode=True, default_flow_style=False),
+                encoding="utf-8",
+            )
+            print(t("key_saved", lang))
+        else:
+            if local_path.exists():
+                local_path.unlink()
+            print(t("no_keys", lang))
     else:
         if local_path.exists():
             print(t("config_unchanged", lang))

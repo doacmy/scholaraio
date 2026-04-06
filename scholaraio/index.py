@@ -893,6 +893,10 @@ def unified_search(
         )
     except (FileNotFoundError, ImportError):
         pass
+    except Exception:
+        # Runtime vector initialization can fail in restricted/offline
+        # environments; unified search must still return FTS results.
+        pass
 
     # -- Merge via Reciprocal Rank Fusion (RRF) --
     # RRF score = sum of 1/(k + rank) across retrieval legs.

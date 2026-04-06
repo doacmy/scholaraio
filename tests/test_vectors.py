@@ -37,6 +37,7 @@ def test_load_model_sets_hf_endpoint_before_sentence_transformers_import(tmp_pat
 
     monkeypatch.setattr(vectors.importlib, "import_module", fake_import_module)
     monkeypatch.setattr(vectors, "_resolve_model_path", lambda *args: None)
+    monkeypatch.setattr(vectors, "_remote_model_download_available", lambda *_args, **_kwargs: True)
     vectors._model_cache.clear()
 
     prev_hf_endpoint = os.environ.get("HF_ENDPOINT")
@@ -78,6 +79,7 @@ def test_load_model_overrides_modelscope_cache_from_cfg(tmp_path, monkeypatch):
         lambda name: SimpleNamespace(SentenceTransformer=FakeSentenceTransformer),
     )
     monkeypatch.setattr(vectors, "_resolve_model_path", lambda *args: None)
+    monkeypatch.setattr(vectors, "_remote_model_download_available", lambda *_args, **_kwargs: True)
     vectors._model_cache.clear()
 
     prev_modelscope_cache = os.environ.get("MODELSCOPE_CACHE")
@@ -89,3 +91,49 @@ def test_load_model_overrides_modelscope_cache_from_cfg(tmp_path, monkeypatch):
             monkeypatch.delenv("MODELSCOPE_CACHE", raising=False)
         else:
             monkeypatch.setenv("MODELSCOPE_CACHE", prev_modelscope_cache)
+
+
+def test_resolve_model_path_prefers_existing_local_modelscope_cache(tmp_path, monkeypatch):
+    model_dir = tmp_path / "Qwen" / "Qwen3-Embedding-0___6B"
+    model_dir.mkdir(parents=True)
+    for name in ("modules.json", "model.safetensors", "config_sentence_transformers.json"):
+        (model_dir / name).write_text("ok", encoding="utf-8")
+
+    monkeypatch.delitem(os.environ, "HF_ENDPOINT", raising=False)
+
+    path = vectors._resolve_model_path("Qwen/Qwen3-Embedding-0.6B", str(tmp_path), "modelscope")
+
+    assert path == str(model_dir)
+
+
+def test_load_model_fast_fails_when_remote_download_is_unreachable(tmp_path, monkeypatch):
+    cfg = _build_config(
+        {
+            "embed": {
+                "source": "huggingface",
+                "device": "cpu",
+                "model": "test-model",
+            }
+        },
+        tmp_path,
+    )
+
+    class FakeSentenceTransformer:
+        def __init__(self, model_name: str, device: str):
+            raise AssertionError("remote loader should not be attempted when preflight fails")
+
+    monkeypatch.setattr(
+        vectors.importlib,
+        "import_module",
+        lambda name: SimpleNamespace(SentenceTransformer=FakeSentenceTransformer),
+    )
+    monkeypatch.setattr(vectors, "_resolve_model_path", lambda *args: None)
+    monkeypatch.setattr(vectors, "_remote_model_download_available", lambda *_args, **_kwargs: False)
+    vectors._model_cache.clear()
+
+    try:
+        vectors._load_model(cfg)
+    except RuntimeError as exc:
+        assert "HuggingFace" in str(exc) or "Hugging Face" in str(exc)
+    else:
+        raise AssertionError("expected _load_model to fail fast when remote preflight is unreachable")

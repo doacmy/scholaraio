@@ -11,6 +11,7 @@ from scholaraio.setup import (
     _check_huggingface,
     _check_mineru,
     _prompt_text,
+    _wizard_deps,
     _wizard_keys,
     _wizard_parser,
     check_dep_group,
@@ -161,6 +162,32 @@ def test_run_check_includes_optional_api_configuration_statuses(monkeypatch):
     assert "可选" in result_map["Zotero API key"].detail
 
 
+def test_run_check_prefers_mineru_recommendation_when_cli_exists_without_token(monkeypatch):
+    cfg = Config()
+    monkeypatch.setattr(
+        "scholaraio.setup._detect_mineru",
+        lambda *_args, **_kwargs: type(
+            "MinerUStatus",
+            (),
+            {
+                "ok": False,
+                "detail": "cli present, token missing",
+                "recommendable": True,
+                "cloud_only": True,
+                "cli_available": True,
+                "token_configured": False,
+            },
+        )(),
+    )
+    monkeypatch.setattr("scholaraio.setup._check_docling", lambda *_: (True, "docling ok"))
+    monkeypatch.setattr("scholaraio.setup._check_huggingface", lambda *_: (False, "hf down"))
+
+    results = run_check(cfg, "zh")
+
+    result_map = {item.label: item for item in results}
+    assert result_map["PDF 解析器推荐"].detail.startswith("MinerU:")
+
+
 def test_check_dep_group_supports_draw_extra(monkeypatch):
     original = importlib.import_module
 
@@ -290,6 +317,8 @@ def test_wizard_parser_auto_choice_shows_advisory_not_override(monkeypatch, caps
     assert "检测到现有 MinerU token" not in out
     assert "尚未配置 MinerU API Token" in out
     assert "建议优先使用 MinerU" in out
+    assert out.index("建议优先使用 MinerU") < out.index("如果你不打算本地部署")
+    assert out.index("如果你不打算本地部署") < out.index("MinerU 本地部署指引")
     assert "如果你已经确定要用另一个" in out
 
 
@@ -309,6 +338,7 @@ def test_wizard_parser_auto_prefers_configured_mineru_before_probe(monkeypatch, 
     assert choice.needs_mineru_key is True
     out = capsys.readouterr().out
     assert "建议优先使用 MinerU" in out
+    assert out.index("建议优先使用 MinerU") < out.index("如果你不打算本地部署")
 
 
 def test_wizard_parser_auto_detects_local_mineru_server(monkeypatch, capsys):
@@ -344,6 +374,48 @@ def test_prompt_text_returns_empty_string_on_eof(monkeypatch):
     value = _prompt_text("  > ")
 
     assert value == ""
+
+
+def test_wizard_deps_does_not_auto_install_when_input_stream_hits_eof(monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda *_args, **_kwargs: (_ for _ in ()).throw(EOFError()))
+    monkeypatch.setattr(
+        "scholaraio.setup.check_dep_group",
+        lambda group: type("Status", (), {"installed": group != "topics", "missing": ["bertopic"]})(),
+    )
+
+    called = []
+
+    def fake_run(*_args, **_kwargs):
+        called.append(True)
+        raise AssertionError("pip install should not run on EOF")
+
+    monkeypatch.setattr("scholaraio.setup.subprocess.run", fake_run)
+
+    _wizard_deps("zh")
+
+    out = capsys.readouterr().out
+    assert called == []
+    assert "已跳过" in out
+
+
+def test_wizard_parser_auto_prefers_mineru_when_cli_exists_even_without_token_probe(monkeypatch, capsys):
+    cfg = Config()
+    answers = iter(["3", "n"])
+    monkeypatch.setattr("builtins.input", lambda *_args, **_kwargs: next(answers))
+    monkeypatch.setattr(
+        "scholaraio.setup.shutil.which", lambda name: "/usr/bin/mineru-open-api" if name == "mineru-open-api" else None
+    )
+    monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "")
+    monkeypatch.setattr("scholaraio.setup._probe_url", lambda *_args, **_kwargs: False)
+
+    choice = _wizard_parser(cfg, "zh")
+
+    assert choice.parser == "mineru"
+    assert choice.needs_mineru_key is True
+    out = capsys.readouterr().out
+    assert "建议优先使用 MinerU" in out
+    assert "免费" in out
+    assert "Token" in out or "token" in out
 
 
 def test_wizard_parser_auto_choice_defaults_to_cloud_key_on_eof(monkeypatch):
@@ -404,7 +476,18 @@ def test_wizard_keys_handles_null_llm_section(tmp_path, monkeypatch):
     assert "api_key: test-key" in local_cfg
 
 
-def test_wizard_keys_reports_existing_config_when_nothing_new_is_added(tmp_path, monkeypatch, capsys):
+def test_wizard_keys_skips_creating_local_config_when_default_parser_and_no_new_values(tmp_path, monkeypatch, capsys):
+    answers = iter(["", "", ""])
+    monkeypatch.setattr("builtins.input", lambda *_args, **_kwargs: next(answers))
+
+    _wizard_keys(tmp_path, "zh", ParserChoice(parser="mineru", needs_mineru_key=True))
+
+    out = capsys.readouterr().out
+    assert not (tmp_path / "config.local.yaml").exists()
+    assert "未配置任何密钥" in out
+
+
+def test_wizard_keys_cleans_redundant_default_parser_override(tmp_path, monkeypatch, capsys):
     (tmp_path / "config.local.yaml").write_text(
         "llm:\n  api_key: existing-llm-key\ningest:\n  mineru_api_key: existing-mineru-key\n  pdf_preferred_parser: mineru\n",
         encoding="utf-8",
@@ -415,5 +498,7 @@ def test_wizard_keys_reports_existing_config_when_nothing_new_is_added(tmp_path,
     _wizard_keys(tmp_path, "zh", ParserChoice(parser="mineru", needs_mineru_key=True))
 
     out = capsys.readouterr().out
-    assert "未新增任何配置" in out
-    assert "保留现有 config.local.yaml" in out
+    assert "已保存到 config.local.yaml" in out
+    local_cfg = (tmp_path / "config.local.yaml").read_text(encoding="utf-8")
+    assert "pdf_preferred_parser" not in local_cfg
+    assert "existing-mineru-key" in local_cfg
