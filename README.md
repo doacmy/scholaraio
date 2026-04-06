@@ -9,6 +9,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
+[![GitHub stars](https://img.shields.io/github/stars/ZimoLiao/scholaraio?style=social)](https://github.com/ZimoLiao/scholaraio/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Claude Code Skills](https://img.shields.io/badge/Claude_Code_Skills-ScholarAIO-purple.svg)](.claude/skills/)
@@ -17,7 +18,7 @@
 
 ---
 
-Your coding agent already reads code, writes code, and runs experiments. ScholarAIO gives it a structured research workspace, so the same agent can search your literature, cross-check results against published findings, use scientific software more accurately, and help drive the full research loop from one terminal.
+Your coding agent already reads code, writes code, and runs experiments. ScholarAIO gives it a structured research workspace, so the same agent can search literature, cross-check results against papers, use scientific software more accurately, and drive the full research loop from one terminal.
 
 What makes it different:
 
@@ -25,89 +26,28 @@ What makes it different:
 - Scientific software questions can be grounded in official docs at runtime instead of prompt guesswork.
 - The system is designed to keep growing as users need more scientific tools and workflows.
 
-<!-- TODO: Add demo GIF here -->
-<!-- <div align="center">
-  <img src="docs/assets/demo.gif" width="700" alt="ScholarAIO Demo">
-</div> -->
+<div align="center">
+  <img src="docs/assets/scholaraio.gif" width="900" alt="ScholarAIO natural-language research workflow">
+</div>
 
-## Start Here
+ScholarAIO gives an AI coding agent a real research workspace. It lets the agent interact in natural language, ground on papers and persistent notes, use scientific tools more accurately, write and run code, validate results against the literature, and turn the work into structured scientific writing.
 
-| If you want to... | Do this |
-|-------------------|---------|
-| Try ScholarAIO itself or contribute to the repo | Open this repository directly with your agent |
-| Use ScholarAIO in Claude Code across many projects | Install the Claude Code plugin |
-| Reuse ScholarAIO skills in Codex / OpenClaw | Register the skills through `~/.agents/skills/` |
+<div align="center">
+  <img src="docs/assets/scholaraio-architecture-v1.3.0.png" width="900" alt="ScholarAIO architecture: human, agent, scientific context, tool layer, and compute/outputs">
+</div>
 
-Detailed setup guide: [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)
+## Quick Start
 
-## Use Inside This Repository
-
-This is the best path when you want the full ScholarAIO experience: bundled agent instructions, local skills, CLI, and the complete codebase context.
+The default and best way to try ScholarAIO is simple: install it, configure it once, and open this repository directly with your coding agent.
 
 ```bash
-# 1. Clone and install
 git clone https://github.com/ZimoLiao/scholaraio.git
 cd scholaraio
 pip install -e ".[full]"
-
-# 2. Configure your local environment
 scholaraio setup
-
-# 3. Start your agent in the repo root
-claude
 ```
 
-When you open the repo directly:
-
-- Claude Code reads `CLAUDE.md` and `.claude/skills/`
-- Codex / OpenClaw read `AGENTS.md` and `.agents/skills/`
-- Cline reads `.clinerules`
-- Cursor reads `.cursorrules`
-- Windsurf reads `.windsurfrules`
-- GitHub Copilot reads `.github/copilot-instructions.md`
-
-You can also use the CLI directly with `scholaraio search "your topic"`.
-
-## Register ScholarAIO in Another Project
-
-### Claude Code plugin
-
-ScholarAIO ships as a Claude Code plugin, so this is the cleanest cross-project install path:
-
-Run these commands inside a Claude Code session, not in your system shell:
-
-```text
-/plugin marketplace add ZimoLiao/scholaraio
-/plugin install scholaraio@scholaraio-marketplace
-```
-
-After that, start a new Claude Code session in any project and use namespaced skills such as `/scholaraio:search` or `/scholaraio:show`.
-
-### Codex / OpenClaw skills
-
-If you want ScholarAIO available to Codex-style agents outside this repo, clone it once and symlink the skills into the global discovery directory:
-
-```bash
-git clone https://github.com/ZimoLiao/scholaraio.git ~/.codex/scholaraio
-cd ~/.codex/scholaraio
-pip install -e ".[full]"
-scholaraio setup
-mkdir -p ~/.agents/skills
-ln -s ~/.codex/scholaraio/.claude/skills ~/.agents/skills/scholaraio
-```
-
-Then make config discovery explicit for cross-project use:
-
-```bash
-# Option A: keep ScholarAIO data rooted in the cloned repo
-export SCHOLARAIO_CONFIG="$HOME/.codex/scholaraio/config.yaml"
-
-# Option B: move/copy config to the global fallback location
-mkdir -p ~/.scholaraio
-cp ~/.codex/scholaraio/config.yaml ~/.scholaraio/config.yaml
-```
-
-Without one of those two options, running `scholaraio` from another project may fall back to defaults rooted in that current project and create `data/` plus `workspace/` there. Restart the agent after creating the symlink. This registers the ScholarAIO skill library globally. For the full bundled project instructions, opening this repository directly is still the better path.
+Then open the repository in Codex, Claude Code, or another supported agent. In this mode, your agent gets the full packaged experience: bundled instructions, local skills, CLI, and the complete codebase context. For plugins, global skill registration, and other setup paths, see [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md).
 
 ## What It Does
 
@@ -128,7 +68,6 @@ Without one of those two options, running `scholaraio` from another project may 
 | **Federated Discovery** | Search across silos | Search your main library, explore silos, and arXiv in one command; pull arXiv PDFs directly into the ingest pipeline |
 | **AI-for-Science Runtime** | Use scientific software more accurately | Agents can look up official tool interfaces at runtime through `toolref`, which already covers Quantum ESPRESSO, LAMMPS, GROMACS, OpenFOAM, and curated bioinformatics tools |
 | **Extensible Tool Onboarding** | Add the next tool users need | ScholarAIO is designed to keep expanding beyond the first five scientific domains, with a dedicated onboarding workflow for bringing in additional user-requested tools |
-| **Diagrams & Figures** | Publication-ready visuals | Mermaid (flowcharts, sequence diagrams, ER diagrams, Gantt charts, mind maps) and vector graphics via Inkscape — output PNG/SVG/PDF |
 | **Academic Writing** | AI-assisted drafting | Literature review, paper sections, citation check, rebuttal, gap analysis — every claim traceable to your own library |
 
 ## Beyond Paper Management
@@ -159,124 +98,20 @@ Skills follow the open [AgentSkills.io](https://agentskills.io) standard, and `.
 
 **Migrating from existing tools?** Import directly from Endnote (XML/RIS) and Zotero (Web API or local SQLite) — your PDFs, metadata, and references come along. More import sources are on the roadmap.
 
-## How It Works
-
-```
-PDF → MinerU → Structured Markdown (figures + LaTeX intact)
-                    ↓
-          Metadata extraction (regex + LLM cross-validation)
-          API enrichment (Crossref / Semantic Scholar / OpenAlex)
-                    ↓
-          DOI dedup → data/papers/<Author-Year-Title>/
-                    ↓
-      ┌─────────────┼─────────────┐
-   FTS5 Index    FAISS Vectors   BERTopic
-   (keyword)     (semantic)      (clustering)
-      └─────────────┼─────────────┘
-                    ↓
-        Your agent (Claude Code / Cursor / CLI / ...)
-```
-
 ## Configuration
 
-Main config: `config.yaml` (tracked). Secrets: `config.local.yaml` (gitignored).
+ScholarAIO works with a minimal setup and grows from there.
 
-| Key | Purpose | Get it |
-|-----|---------|--------|
-| LLM API key | Metadata extraction, enrichment, academic discussion | Set `llm.api_key` in `config.local.yaml`, or use env vars: `SCHOLARAIO_LLM_API_KEY` (universal), `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY` / `GEMINI_API_KEY`. Default backend: [DeepSeek](https://platform.deepseek.com/); also supports Claude, Gemini, Ollama, and any OpenAI-compatible API. This is usually billed separately by the provider; do not assume an agent subscription automatically covers ScholarAIO API calls |
-| `MINERU_TOKEN` / `MINERU_API_KEY` | MinerU cloud PDF parsing via `mineru-open-api` | Free at [mineru.net](https://mineru.net/apiManage/token); install CLI with `pip install mineru-open-api`, or [self-host](https://github.com/opendatalab/MinerU) |
+- `scholaraio setup` walks you through the basics.
+- An LLM API key is optional but recommended for metadata extraction, enrichment, and deeper academic discussion.
+- A MinerU token is optional; without it, ScholarAIO can still fall back to Docling or PyMuPDF for PDF parsing.
+- `scholaraio setup check` shows what is installed, what is optional, and what is missing.
 
-> **Both are optional.** Without LLM: regex-only extraction. Without MinerU token / local service: ScholarAIO can still fall back to Docling or PyMuPDF for PDF parsing, or you can place `.md` files in `data/inbox/` directly.
+Full setup and configuration details → [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md), [`config.yaml`](config.yaml)
 
-`scholaraio setup check` also reports optional advanced items such as Semantic Scholar and Zotero API keys. These are not part of the minimal setup; configure them only if you need citation refresh throughput or Zotero Web API import.
+## Agent First, CLI Available
 
-Embedding model (Qwen3-Embedding-0.6B, ~1.2 GB) auto-downloads on first use. Default source: ModelScope (no proxy needed in China). International users: set `embed.source: huggingface` in config.
-You can also override embedding source/model cache via environment variables: `SCHOLARAIO_EMBED_SOURCE`, `SCHOLARAIO_EMBED_CACHE_DIR`, `SCHOLARAIO_EMBED_MODEL`, and optional mirror `SCHOLARAIO_HF_ENDPOINT` (fallback to `HF_ENDPOINT`).
-
-Optional web browsing integration: see [`docs/guide/webtools-integration.md`](docs/guide/webtools-integration.md) for using ScholarAIO together with [claude-webtools](https://github.com/AnterCreeper/claude-webtools).
-
-Full config reference → [`config.yaml`](config.yaml)
-
-## Two Ways to Use
-
-| Mode | Best for | Command |
-|------|----------|---------|
-| **Agent** (recommended) | Full research workflow — conversational | `claude` / your preferred agent in project dir |
-| **CLI** | Scripting, quick queries | `scholaraio --help` |
-
-<details>
-<summary><strong>CLI command reference</strong></summary>
-
-**Search & Read**
-```
-scholaraio search QUERY       Keyword search
-scholaraio vsearch QUERY      Semantic vector search
-scholaraio usearch QUERY      Unified search (keyword + semantic fusion)
-scholaraio fsearch QUERY      Federated search (main / proceedings / explore / arXiv)
-scholaraio search-author NAME Search by author
-scholaraio top-cited          Rank by citation count
-scholaraio show PAPER         View paper content (L1-L4)
-```
-
-**Ingest & Enrich**
-```
-scholaraio pipeline PRESET    Run ingestion pipeline (full|ingest|enrich|reindex)
-scholaraio index              Build keyword search index
-scholaraio embed              Generate semantic vectors
-scholaraio enrich-toc         Extract table of contents
-scholaraio enrich-l3          Extract conclusions
-scholaraio backfill-abstract  Backfill missing abstracts
-scholaraio refetch            Re-fetch citation counts from APIs
-scholaraio translate PAPER    Translate markdown to a target language
-scholaraio translate PAPER --portable  Export a portable translation bundle with images under workspace/translation-ws/
-```
-
-**Citation Graph**
-```
-scholaraio refs PAPER         View references
-scholaraio citing PAPER       View citing papers
-scholaraio shared-refs A B    Shared references between papers
-```
-
-**Explore & Topics**
-```
-scholaraio explore fetch ...  Literature exploration (OpenAlex multi-filter)
-scholaraio explore search ... Search within an explore library
-scholaraio topics             BERTopic topic modeling
-```
-
-**Import & Export**
-```
-scholaraio import-endnote     Import from Endnote
-scholaraio import-zotero      Import from Zotero
-scholaraio attach-pdf         Attach PDF to existing paper
-scholaraio arxiv search ...   Search arXiv preprints
-scholaraio arxiv fetch ID     Download arXiv PDF (optionally ingest)
-scholaraio export bibtex      Export BibTeX
-scholaraio ws init NAME       Create a workspace
-scholaraio ws add NAME PAPER  Add papers to workspace
-scholaraio ws search NAME Q   Search within workspace
-```
-
-**Scientific Runtime**
-```
-scholaraio toolref list       List indexed scientific tool docs
-scholaraio toolref show ...   Show exact parameter or command docs
-scholaraio toolref search ... Search scientific tool docs
-scholaraio document inspect   Inspect DOCX / PPTX / XLSX structure
-```
-
-**Maintenance**
-```
-scholaraio audit              Data quality audit
-scholaraio repair             Fix metadata
-scholaraio rename             Standardize directory names
-scholaraio setup              Setup wizard
-scholaraio metrics            View LLM usage stats
-scholaraio insights [--days N] Reading behavior analytics
-```
-
-</details>
+ScholarAIO is designed to work best through an AI coding agent, but the CLI is available for scripting, inspection, and quick queries. For a current command reference aligned with the code, see [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md).
 
 ## Project Structure
 

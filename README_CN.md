@@ -9,6 +9,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
+[![GitHub stars](https://img.shields.io/github/stars/ZimoLiao/scholaraio?style=social)](https://github.com/ZimoLiao/scholaraio/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Claude Code Skills](https://img.shields.io/badge/Claude_Code_Skills-ScholarAIO-purple.svg)](.claude/skills/)
@@ -17,7 +18,7 @@
 
 ---
 
-你的 coding agent 已经能读代码、写代码、跑实验。ScholarAIO 给它加上一个结构化的科研工作台，于是同一个 agent 不只会写代码，也能检索文献、交叉验证结果、更准确地使用科学软件，并在一个终端里推动完整科研流程。
+你的 coding agent 已经能读代码、写代码、跑实验。ScholarAIO 给它加上一个结构化的科研工作台，于是同一个 agent 不只会写代码，也能检索文献、对照论文校验结果、更准确地使用科学软件，并在一个终端里推动完整科研流程。
 
 它的特别之处在于：
 
@@ -25,91 +26,28 @@
 - 遇到科学软件问题时，agent 可以在运行时查官方文档，而不是只靠 prompt 猜参数。
 - 系统从一开始就按“可继续扩展更多工具和工作流”来设计。
 
-<!-- TODO: 加 demo GIF -->
-<!-- <div align="center">
-  <img src="docs/assets/demo.gif" width="700" alt="ScholarAIO Demo">
-</div> -->
+<div align="center">
+  <img src="docs/assets/scholaraio.gif" width="900" alt="ScholarAIO 自然语言科研工作流">
+</div>
 
-## 从这里开始
+ScholarAIO 给 AI coding agent 的不只是检索能力，而是一整套真正可用的科研工作台：自然语言交互、论文与研究笔记支撑、更准确的科学软件使用、代码编写与执行、基于文献的结果校验，以及结构化的论文写作。
 
-| 如果你想... | 推荐做法 |
-|-------------|----------|
-| 直接体验 ScholarAIO 或参与开发 | 直接用 agent 打开这个仓库 |
-| 在 Claude Code 的任意项目里使用 ScholarAIO | 安装 Claude Code 插件 |
-| 在 Codex / OpenClaw 中复用 ScholarAIO skills | 注册到 `~/.agents/skills/` |
+<div align="center">
+  <img src="docs/assets/scholaraio-architecture-v1.3.0.png" width="900" alt="ScholarAIO 架构图：human、agent、scientific context、tool layer 与 compute/outputs">
+</div>
 
-详细说明见：[`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)
+## 快速开始
 
-## 在本仓库内使用
-
-如果你想获得最完整的体验，这是最好的路径：仓库内置的 agent 指令、skills、CLI 和完整代码上下文都会直接可用。
+默认、也是最推荐的使用方式很简单：安装 ScholarAIO，完成一次配置，然后直接让你的 coding agent 打开这个仓库。
 
 ```bash
-# 1. 克隆并安装
 git clone https://github.com/ZimoLiao/scholaraio.git
 cd scholaraio
 pip install -e ".[full]"
-
-# 2. 配置本地环境
 scholaraio setup
-
-# 3. 在仓库根目录启动你的 agent
-claude
 ```
 
-直接打开仓库时：
-
-- Claude Code 会读取 `CLAUDE.md` 和 `.claude/skills/`
-- Codex / OpenClaw 会读取 `AGENTS.md` 和 `.agents/skills/`
-- Cline 会读取 `.clinerules`
-- Cursor 会读取 `.cursorrules`
-- Windsurf 会读取 `.windsurfrules`
-- GitHub Copilot 会读取 `.github/copilot-instructions.md`
-
-你也可以直接使用 CLI，例如 `scholaraio search "你的主题"`。
-
-## 在任意项目中启用 ScholarAIO
-
-### Claude Code 插件
-
-如果你想在任意项目里启用 ScholarAIO，Claude Code 插件是最干净的路径：
-
-请在 Claude Code 会话中输入以下斜杠命令，不要在系统终端里运行：
-
-```text
-/plugin marketplace add ZimoLiao/scholaraio
-/plugin install scholaraio@scholaraio-marketplace
-```
-
-安装后，在任意项目中新开 Claude Code 会话，即可用 `/scholaraio:search`、`/scholaraio:show` 这类命名空间 skill。
-
-### Codex / OpenClaw skills 注册
-
-如果你想在仓库外也让 Codex 风格 agent 发现 ScholarAIO，推荐像其他 skills 包那样做一次全局注册：
-
-```bash
-git clone https://github.com/ZimoLiao/scholaraio.git ~/.codex/scholaraio
-cd ~/.codex/scholaraio
-pip install -e ".[full]"
-scholaraio setup
-mkdir -p ~/.agents/skills
-ln -s ~/.codex/scholaraio/.claude/skills ~/.agents/skills/scholaraio
-```
-
-然后明确配置发现路径，避免在其他项目目录里误创建 `data/` 和 `workspace/`：
-
-```bash
-# 方案 A：让 ScholarAIO 数据继续放在克隆仓库目录下
-export SCHOLARAIO_CONFIG="$HOME/.codex/scholaraio/config.yaml"
-
-# 方案 B：把配置放到全局默认位置
-mkdir -p ~/.scholaraio
-cp ~/.codex/scholaraio/config.yaml ~/.scholaraio/config.yaml
-```
-
-如果不做这一步，在其他项目目录里运行 `scholaraio` 时，程序可能回退到当前项目下的默认配置并在那里创建 `data/` 和 `workspace/`。创建符号链接后重启 agent，这样 ScholarAIO skills 才会被全局发现；如果你还想让 agent 同时读取仓库自带的完整项目指令，仍然建议直接打开本仓库。
-
-完整 agent 对照表见 [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)。
+然后直接用 Codex、Claude Code 或其他支持的 agent 打开这个仓库即可。用这种方式，agent 能拿到最完整的体验：仓库内置指令、本地 skills、CLI 和完整代码上下文都会直接可用。Claude Code 插件、Codex/OpenClaw skills 注册，以及其他使用路径，都展开写在 [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)。
 
 ## 核心功能
 
@@ -130,7 +68,6 @@ cp ~/.codex/scholaraio/config.yaml ~/.scholaraio/config.yaml
 | **联邦发现** | 跨库搜索 | 一条命令同时搜索主库、explore 库和 arXiv；可直接把 arXiv PDF 拉取进 ingest 流水线 |
 | **AI for Science 运行时能力** | 更准确地使用科学软件 | agent 可以通过 `toolref` 在运行时查官方接口文档；当前已覆盖 Quantum ESPRESSO、LAMMPS、GROMACS、OpenFOAM 和 curated bioinformatics 工具 |
 | **可扩展工具接入** | 持续接入用户真正需要的软件 | ScholarAIO 不止支持当前这五类科学工具；它从设计上就支持继续接入新的用户需求工具，并配有专门的 onboarding 工作流 |
-| **绘图与可视化** | 出版级图表 | Mermaid（流程图、时序图、ER 图、甘特图、思维导图）+ Inkscape 矢量图形——输出 PNG/SVG/PDF |
 | **学术写作** | AI 辅助撰写 | 文献综述、论文章节、引用验证、审稿回复、研究空白分析——每条引用可追溯至你自己的文献库 |
 
 ## 不只是论文管理
@@ -161,121 +98,20 @@ Skills 遵循开放的 [AgentSkills.io](https://agentskills.io) 标准，`.agent
 
 **从现有工具迁移？** 支持从 Endnote（XML/RIS）和 Zotero（Web API 或本地 SQLite）直接导入——PDF、元数据、引用关系一并迁入。更多导入源持续开发中。
 
-## 工作流程
-
-```
-PDF → MinerU → 结构化 Markdown（图表 + LaTeX 公式保留）
-                    ↓
-          元数据提取（正则 + LLM 交叉验证）
-          API 补全（Crossref / Semantic Scholar / OpenAlex）
-                    ↓
-          DOI 去重 → data/papers/<Author-Year-Title>/
-                    ↓
-      ┌─────────────┼─────────────┐
-   FTS5 索引      FAISS 向量     BERTopic
-   （关键词）     （语义）       （聚类）
-      └─────────────┼─────────────┘
-                    ↓
-        你的 agent（Claude Code / Cursor / CLI / ...）
-```
-
 ## 配置说明
 
-主配置：`config.yaml`（进 git）。敏感信息：`config.local.yaml`（不进 git）。
+ScholarAIO 可以先用最小配置跑起来，再按需要逐步补强。
 
-| Key | 用途 | 获取方式 |
-|-----|------|---------|
-| LLM API key | 元数据提取、内容富化、学术讨论 | 在 `config.local.yaml` 中设置 `llm.api_key`，或使用环境变量：`SCHOLARAIO_LLM_API_KEY`（通用）、`DEEPSEEK_API_KEY`、`OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GOOGLE_API_KEY` / `GEMINI_API_KEY`。默认后端：[DeepSeek](https://platform.deepseek.com/)；同时支持 Claude、Gemini、Ollama 及任意 OpenAI 兼容 API。通常需要由所选提供商单独计费；不要默认认为 agent 订阅会自动覆盖 ScholarAIO 的 API 调用 |
-| `MINERU_TOKEN` / `MINERU_API_KEY` | 通过 `mineru-open-api` 走 MinerU 云端 PDF 解析 | [mineru.net](https://mineru.net/apiManage/token) 免费申请，CLI 安装：`pip install mineru-open-api`，也可[本地部署](https://github.com/opendatalab/MinerU) |
+- `scholaraio setup` 会带你完成基础配置。
+- LLM API key 不是必须，但建议配置，用于元数据提取、内容补全和更深入的学术讨论。
+- MinerU token 不是必须；没有它时，ScholarAIO 仍可回退到 Docling 或 PyMuPDF 做 PDF 解析。
+- `scholaraio setup check` 可以查看当前已装好什么、缺什么、哪些只是可选项。
 
-> **均为可选。** 没有 LLM key：降级为纯正则提取。没有 MinerU token / 本地能力时，ScholarAIO 仍可回退到 Docling 或 PyMuPDF 解析 PDF；也可以直接将 `.md` 放入 `data/inbox/`。
+完整说明见 [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md) 和 [`config.yaml`](config.yaml)。
 
-`scholaraio setup check` 还会报告一些可选的高级配置项，例如 Semantic Scholar API key 和 Zotero API key。它们不属于最小起步配置，只在你需要更高 citation 刷新吞吐或 Zotero Web API 导入时才值得配置。
+## 以 Agent 为主，也支持 CLI
 
-嵌入模型（Qwen3-Embedding-0.6B，约 1.2 GB）首次使用时自动下载。默认从 ModelScope 下载（国内无需代理），海外用户设置 `embed.source: huggingface`。
-
-完整配置参考 → [`config.yaml`](config.yaml)
-
-## 两种使用方式
-
-| 模式 | 适用场景 | 命令 |
-|------|---------|------|
-| **Agent**（推荐） | 完整科研工作流——对话式交互 | 项目目录下运行 `claude` 或你喜欢的 agent |
-| **CLI** | 脚本、快速查询 | `scholaraio --help` |
-
-<details>
-<summary><strong>CLI 命令一览</strong></summary>
-
-**检索与阅读**
-```
-scholaraio search QUERY       关键词检索（FTS5）
-scholaraio vsearch QUERY      语义向量检索
-scholaraio usearch QUERY      融合检索（关键词 + 语义）
-scholaraio fsearch QUERY      联邦搜索（主库 / proceedings / explore / arXiv）
-scholaraio search-author NAME 按作者搜索
-scholaraio top-cited          按引用量排序
-scholaraio show PAPER         查看论文内容（L1-L4）
-```
-
-**入库与富化**
-```
-scholaraio pipeline PRESET    运行入库流水线（full|ingest|enrich|reindex）
-scholaraio index              构建 FTS5 检索索引
-scholaraio embed              生成语义向量
-scholaraio enrich-toc         提取目录结构
-scholaraio enrich-l3          提取结论段
-scholaraio backfill-abstract  补全缺失摘要
-scholaraio refetch            重新查询引用量
-scholaraio translate PAPER    将论文 Markdown 翻译到目标语言
-scholaraio translate PAPER --portable  额外导出带图片的可移植翻译包到 workspace/translation-ws/
-```
-
-**引用图谱**
-```
-scholaraio refs PAPER         查看参考文献
-scholaraio citing PAPER       查看被引论文
-scholaraio shared-refs A B    共同参考文献分析
-```
-
-**探索与主题**
-```
-scholaraio explore fetch ...  文献探索（OpenAlex 多维过滤）
-scholaraio explore search ... 探索库内检索
-scholaraio topics             BERTopic 主题建模
-```
-
-**导入与导出**
-```
-scholaraio import-endnote     从 Endnote 导入
-scholaraio import-zotero      从 Zotero 导入
-scholaraio attach-pdf         为已有论文补充 PDF
-scholaraio arxiv search ...   搜索 arXiv 预印本
-scholaraio arxiv fetch ID     下载 arXiv PDF（可直接入库）
-scholaraio export bibtex      导出 BibTeX
-scholaraio ws init NAME       创建工作区
-scholaraio ws add NAME PAPER  添加论文到工作区
-scholaraio ws search NAME Q   工作区内检索
-```
-
-**科学计算与文档**
-```
-scholaraio toolref list       列出已索引科学工具文档
-scholaraio toolref show ...   精确查看参数/命令文档
-scholaraio toolref search ... 搜索科学工具文档
-scholaraio document inspect   检查 DOCX / PPTX / XLSX 结构
-```
-
-**维护**
-```
-scholaraio audit              数据质量审计
-scholaraio repair             修复元数据
-scholaraio rename             标准化目录名
-scholaraio setup              环境配置向导（默认进入向导，`check` 只做诊断）
-scholaraio metrics            查看 LLM 用量统计
-scholaraio insights [--days N] 阅读行为分析
-```
-
-</details>
+ScholarAIO 最适合通过 AI coding agent 使用，但也提供 CLI，方便做脚本、排查和快速查询。与当前代码实现对齐的命令参考见 [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md)。
 
 ## 项目结构
 
