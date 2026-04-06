@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from scholaraio import cli
+from scholaraio.index import build_index
 from scholaraio.ingest.mineru import ConvertResult
 from scholaraio.setup import _S
 from scholaraio.translate import TranslateResult
@@ -78,6 +79,12 @@ class TestCliHelpLocalization:
         assert "多维文献探索" in root_help
         assert "期刊全量探索" not in root_help
 
+    def test_refetch_help_accepts_uuid_and_doi_identifiers(self):
+        parser = cli._build_parser()
+        refetch_help = parser._subparsers._group_actions[0].choices["refetch"].format_help()
+
+        assert "目录名 / UUID / DOI" in refetch_help
+
 
 class TestShowLayer4Headings:
     def test_translated_full_text_heading_uses_consistent_spacing(self, tmp_papers, monkeypatch):
@@ -106,6 +113,40 @@ class TestShowLayer4Headings:
         cli.cmd_show(args, cfg)
 
         assert "\n--- 全文（原文，paper_fr.md 不存在） ---\n" in messages
+
+
+class TestRefetchIdentifierResolution:
+    def test_refetch_resolves_uuid_via_registry(self, tmp_papers, tmp_db, monkeypatch):
+        build_index(tmp_papers, tmp_db)
+
+        seen: list[Path] = []
+        messages: list[str] = []
+        monkeypatch.setattr(cli, "ui", messages.append)
+        monkeypatch.setattr("scholaraio.ingest.metadata.refetch_metadata", lambda jp: seen.append(jp) or True)
+
+        cfg = SimpleNamespace(papers_dir=tmp_papers, index_db=tmp_db)
+        args = Namespace(paper_id="aaaa-1111", all=False, force=False, jobs=5)
+
+        cli.cmd_refetch(args, cfg)
+
+        assert seen == [tmp_papers / "Smith-2023-Turbulence" / "meta.json"]
+        assert any("并发 refetch（1 workers，共 1 篇）" in m for m in messages)
+        assert any("Smith-2023-Turbulence" in m for m in messages)
+
+    def test_refetch_resolves_mixed_case_doi_without_registry(self, tmp_papers, tmp_path, monkeypatch):
+        seen: list[Path] = []
+        messages: list[str] = []
+        monkeypatch.setattr(cli, "ui", messages.append)
+        monkeypatch.setattr("scholaraio.ingest.metadata.refetch_metadata", lambda jp: seen.append(jp) or True)
+
+        cfg = SimpleNamespace(papers_dir=tmp_papers, index_db=tmp_path / "missing-index.db")
+        args = Namespace(paper_id="10.1234/JFM.2023.001", all=False, force=False, jobs=5)
+
+        cli.cmd_refetch(args, cfg)
+
+        assert seen == [tmp_papers / "Smith-2023-Turbulence" / "meta.json"]
+        assert any("并发 refetch（1 workers，共 1 篇）" in m for m in messages)
+        assert any("Smith-2023-Turbulence" in m for m in messages)
 
 
 class TestShowNotesIntegration:

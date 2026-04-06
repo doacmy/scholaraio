@@ -1052,7 +1052,7 @@ def cmd_refetch(args: argparse.Namespace, cfg) -> None:
     if args.all:
         targets = sorted(d / "meta.json" for d in iter_paper_dirs(papers_dir))
     elif args.paper_id:
-        targets = [papers_dir / args.paper_id / "meta.json"]
+        targets = [_resolve_paper(args.paper_id, cfg) / "meta.json"]
     else:
         _log.error("请指定 <paper-id> 或 --all")
         sys.exit(1)
@@ -1085,6 +1085,11 @@ def cmd_refetch(args: argparse.Namespace, cfg) -> None:
             _log.error("未找到论文: %s", jp.parent.name)
             fail += 1
     targets = valid
+    if not targets:
+        if args.all:
+            ui("无需更新")
+            return
+        sys.exit(1)
 
     ok = skip = 0
     total = len(targets)
@@ -2980,13 +2985,15 @@ def _resolve_paper(paper_id: str, cfg) -> Path:
     # 3. Filesystem scan fallback (handles stale registry / pre-index state)
     from scholaraio.papers import read_meta as _read_meta
 
+    normalized_doi = paper_id.strip().lower()
     for pdir in iter_paper_dirs(papers_dir):
         try:
             data = _read_meta(pdir)
         except (ValueError, FileNotFoundError) as e:
             _log.debug("failed to read meta.json in %s: %s", pdir.name, e)
             continue
-        if data.get("id") == paper_id or data.get("doi") == paper_id:
+        doi = str(data.get("doi") or "").strip().lower()
+        if data.get("id") == paper_id or (doi and doi == normalized_doi):
             return pdir
     _log.error("未找到论文: %s", paper_id)
     sys.exit(1)
@@ -3182,7 +3189,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- refetch ---
     p_refetch = sub.add_parser("refetch", help="重新查询 API 补全引用量等字段")
     p_refetch.set_defaults(func=cmd_refetch)
-    p_refetch.add_argument("paper_id", nargs="?", help="论文 ID（省略则需 --all）")
+    p_refetch.add_argument("paper_id", nargs="?", help="论文 ID（目录名 / UUID / DOI；省略则需 --all）")
     p_refetch.add_argument("--all", action="store_true", help="补查所有缺失引用量的论文")
     p_refetch.add_argument("--force", action="store_true", help="强制重新查询（包括已有引用量的论文）")
     p_refetch.add_argument("--jobs", "-j", type=int, default=5, help="并发数（默认 5）")
