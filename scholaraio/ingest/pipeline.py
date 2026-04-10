@@ -186,6 +186,8 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
         _plan_cloud_chunking,
         check_server,
         convert_pdf,
+        is_pdf_validation_error,
+        validate_pdf_for_mineru,
     )
     from scholaraio.ingest.pdf_fallback import (
         convert_pdf_with_fallback,
@@ -273,6 +275,12 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
             ctx.md_path = md_path
             return StepResult.OK
 
+    validation = validate_pdf_for_mineru(pdf_path)
+    if not validation.ok:
+        _log.error("%s", validation.error or "PDF validation failed")
+        ctx.status = "failed"
+        return StepResult.FAIL
+
     local_chunk_limit = getattr(ctx.cfg.ingest, "chunk_page_limit", 100)
     cloud_chunk_size = 0
     cloud_chunk_reason = ""
@@ -326,6 +334,10 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
 
     if result is None or not result.success:
         mineru_err = result.error if result is not None else "MinerU unavailable"
+        if is_pdf_validation_error(result):
+            _log.error("%s", mineru_err)
+            ctx.status = "failed"
+            return StepResult.FAIL
         _log.warning("MinerU failed, trying fallback parsers: %s", mineru_err)
         ok, parser_name, fallback_err = convert_pdf_with_fallback(
             pdf_path,
@@ -1054,7 +1066,7 @@ def _process_inbox(
                 continue
             pdfs_to_convert.append(pdf)
         if pdfs_to_convert:
-            from scholaraio.ingest.mineru import ConvertOptions, convert_pdfs_cloud_batch
+            from scholaraio.ingest.mineru import ConvertOptions, convert_pdfs_cloud_batch, is_pdf_validation_error
 
             mineru_opts = ConvertOptions(
                 output_dir=inbox_dir,
@@ -1097,7 +1109,10 @@ def _process_inbox(
                 if not br.success:
                     batch_retry_stems.add(did)
                     _log.error("MinerU batch failed for %s: %s", br.pdf_path.name, br.error)
-                    ui(f"  {br.pdf_path.name}: MinerU 批量预处理失败，后续将按单文件解析流重试")
+                    if is_pdf_validation_error(br):
+                        ui(f"  {br.pdf_path.name}: PDF 校验失败，后续不会降级解析")
+                    else:
+                        ui(f"  {br.pdf_path.name}: MinerU 批量预处理失败，后续将按单文件解析流重试")
                     continue
                 entry = entries.get(did)
                 if entry is not None and entry["md"] is None and br.md_path and br.md_path.exists():
@@ -1685,7 +1700,7 @@ def batch_convert_pdfs(
         ui("没有需要转换的 PDF")
         return stats
 
-    from scholaraio.ingest.mineru import ConvertOptions, check_server
+    from scholaraio.ingest.mineru import ConvertOptions, check_server, is_pdf_validation_error
     from scholaraio.ingest.pdf_fallback import (
         convert_pdf_with_fallback,
         preferred_parser_order,
@@ -1751,6 +1766,9 @@ def batch_convert_pdfs(
             result = convert_pdf(pdf_path, mineru_opts)
             if not result.success:
                 ui(f"  MinerU 失败: {result.error}")
+                if is_pdf_validation_error(result):
+                    stats["failed"] += 1
+                    continue
                 _run_fallback(pdir, pdf_path)
                 continue
 
@@ -1822,6 +1840,9 @@ def batch_convert_pdfs(
 
                     if not br.success:
                         ui(f"  {pdir.name}: MinerU 失败: {br.error}")
+                        if is_pdf_validation_error(br):
+                            stats["failed"] += 1
+                            continue
                         _run_fallback(pdir, br.pdf_path)
                         continue
 
@@ -1879,6 +1900,9 @@ def batch_convert_pdfs(
                 continue
             if not result.success:
                 ui(f"  {pdir.name}: MinerU 失败: {result.error}")
+                if is_pdf_validation_error(result):
+                    stats["failed"] += 1
+                    continue
                 _run_fallback(pdir, pdf_path)
                 continue
             _postprocess_convert(pdir, pdf_path, result)
