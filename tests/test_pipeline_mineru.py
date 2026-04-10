@@ -17,6 +17,59 @@ def _allow_pdf_validation(monkeypatch):
     )
 
 
+def test_cloud_batch_uses_safe_asset_directory_for_long_pdf_name(tmp_path, monkeypatch):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    papers = tmp_path / "papers"
+    pending = tmp_path / "pending"
+    long_stem = "a" * 250
+    pdf = inbox / f"{long_stem}.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    cfg = Config()
+    cfg._root = tmp_path
+    cfg.paths.papers_dir = "papers"
+    monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "token")
+
+    import scholaraio.ingest.mineru as mineru
+    import scholaraio.ingest.pipeline as pipeline
+
+    monkeypatch.setattr(mineru, "check_server", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(mineru, "_plan_cloud_chunking", lambda *_args, **_kwargs: (False, 600, ""))
+
+    def fake_cloud_batch(pdf_paths, opts, *, api_key, cloud_url, batch_size):
+        safe_stem = Path(mineru._cloud_safe_pdf_name(pdf_paths[0])).stem
+        md_dir = opts.output_dir / f"0000_{safe_stem}" / safe_stem
+        images_dir = md_dir / "images"
+        images_dir.mkdir(parents=True)
+        (images_dir / "figure.png").write_bytes(b"img")
+        md_path = md_dir / "index.md"
+        md_path.write_text("# ok\n", encoding="utf-8")
+        return [ConvertResult(pdf_path=pdf_paths[0], md_path=md_path, success=True)]
+
+    def fake_extract(ctx):
+        images_dir, _, _ = pipeline._find_assets(ctx.inbox_dir, ctx.pdf_path.stem, ctx.md_path.stem)
+        assert images_dir is not None
+        assert len(images_dir.name.encode("utf-8")) <= 255
+        assert long_stem not in images_dir.name
+        return StepResult.OK
+
+    monkeypatch.setattr(mineru, "convert_pdfs_cloud_batch", fake_cloud_batch)
+    monkeypatch.setitem(pipeline.STEPS, "extract", pipeline.StepDef(fn=fake_extract, scope="inbox", desc="test"))
+
+    _process_inbox(
+        inbox,
+        papers,
+        pending,
+        {},
+        ["mineru", "extract"],
+        cfg,
+        {},
+        False,
+        [],
+    )
+
+
 def test_step_mineru_falls_back_without_cloud_key(tmp_path, monkeypatch):
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(b"%PDF-1.4\n")

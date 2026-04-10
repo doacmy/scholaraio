@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from scholaraio.ingest.mineru import (
     ConvertOptions,
@@ -11,10 +13,12 @@ from scholaraio.ingest.mineru import (
     PDFValidationResult,
     _cloud_safe_pdf_name,
     _convert_chunk_cloud,
+    _convert_long_pdf,
     _convert_long_pdf_cloud,
     _locate_cloud_markdown_output,
     _plan_cloud_chunking,
     _resolve_cloud_model_version,
+    _split_pdf,
     cloud_safe_input_path,
     convert_pdf,
     convert_pdf_cloud,
@@ -82,6 +86,120 @@ def test_convert_long_pdf_cloud_preserves_cloud_model_version(tmp_path, monkeypa
 
     assert result.success is True
     assert captured["cloud_model_version"] == "MinerU-HTML"
+
+
+def test_convert_long_pdf_uses_safe_chunk_workspace_for_long_filename(tmp_path, monkeypatch):
+    long_stem = "a" * 250
+    pdf_path = tmp_path / f"{long_stem}.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n")
+    chunk_pdf = tmp_path / "chunk-1.pdf"
+    chunk_pdf.write_bytes(b"%PDF-1.4\n")
+    output_dir = tmp_path / "out"
+
+    _allow_pdf_validation(monkeypatch)
+
+    def fake_split_pdf(_pdf_path, chunk_size, output_dir):
+        assert len(output_dir.name.encode("utf-8")) <= 255
+        assert long_stem not in output_dir.name
+        return [chunk_pdf]
+
+    monkeypatch.setattr("scholaraio.ingest.mineru._split_pdf", fake_split_pdf)
+    monkeypatch.setattr(
+        "scholaraio.ingest.mineru.convert_pdf",
+        lambda path, opts: ConvertResult(pdf_path=path, md_path=opts.output_dir / "chunk-1.md", success=True),
+    )
+    monkeypatch.setattr(
+        "scholaraio.ingest.mineru._merge_chunk_results",
+        lambda chunk_results, original_pdf, out_dir: ConvertResult(
+            pdf_path=original_pdf,
+            md_path=out_dir / f"{original_pdf.stem}.md",
+            success=True,
+        ),
+    )
+
+    result = _convert_long_pdf(pdf_path, ConvertOptions(output_dir=output_dir), chunk_size=1)
+
+    assert result.success is True
+
+
+def test_convert_long_pdf_cloud_uses_safe_chunk_workspace_for_long_filename(tmp_path, monkeypatch):
+    long_stem = "a" * 250
+    pdf_path = tmp_path / f"{long_stem}.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n")
+    chunk_pdf = tmp_path / "chunk-1.pdf"
+    chunk_pdf.write_bytes(b"%PDF-1.4\n")
+    output_dir = tmp_path / "out"
+
+    _allow_pdf_validation(monkeypatch)
+
+    def fake_split_pdf(_pdf_path, chunk_size, output_dir):
+        assert len(output_dir.name.encode("utf-8")) <= 255
+        assert long_stem not in output_dir.name
+        return [chunk_pdf]
+
+    def fake_batch(pdf_paths, opts, *, api_key, cloud_url, batch_size=20):
+        return [ConvertResult(pdf_path=pdf_paths[0], md_path=opts.output_dir / "chunk-1.md", success=True)]
+
+    monkeypatch.setattr("scholaraio.ingest.mineru._split_pdf", fake_split_pdf)
+    monkeypatch.setattr("scholaraio.ingest.mineru.convert_pdfs_cloud_batch", fake_batch)
+    monkeypatch.setattr(
+        "scholaraio.ingest.mineru._merge_chunk_results",
+        lambda chunk_results, original_pdf, out_dir: ConvertResult(
+            pdf_path=original_pdf,
+            md_path=out_dir / f"{original_pdf.stem}.md",
+            success=True,
+        ),
+    )
+
+    result = _convert_long_pdf_cloud(
+        pdf_path,
+        ConvertOptions(output_dir=output_dir),
+        api_key="token",
+        cloud_url="https://mineru.example",
+        chunk_size=1,
+    )
+
+    assert result.success is True
+
+
+def test_split_pdf_uses_safe_chunk_names_for_long_filename(tmp_path, monkeypatch):
+    long_stem = "a" * 250
+    pdf_path = tmp_path / f"{long_stem}.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n")
+    saved_paths: list[Path] = []
+
+    class FakeSourceDoc:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    class FakeChunkDoc:
+        def insert_pdf(self, *_args, **_kwargs):
+            return None
+
+        def save(self, path):
+            saved_paths.append(Path(path))
+
+        def close(self):
+            return None
+
+    def fake_open(path=None):
+        if path is None:
+            return FakeChunkDoc()
+        return FakeSourceDoc()
+
+    monkeypatch.setattr("scholaraio.ingest.mineru._get_pdf_page_count", lambda _path: 2)
+    monkeypatch.setitem(sys.modules, "pymupdf", SimpleNamespace(open=fake_open))
+
+    chunks = _split_pdf(pdf_path, chunk_size=1, output_dir=tmp_path / "chunks")
+
+    assert chunks == saved_paths
+    assert len(chunks) == 2
+    for chunk_path in chunks:
+        assert len(chunk_path.name.encode("utf-8")) <= 255
+        assert long_stem not in chunk_path.name
 
 
 def test_resolve_cloud_model_version_falls_back_to_backend_when_unset():

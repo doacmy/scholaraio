@@ -591,6 +591,11 @@ def _truncate_utf8_prefix(value: str, *, max_chars: int, max_bytes: int) -> str:
 
 def _cloud_safe_pdf_stem(pdf_path: Path) -> str:
     """Return the stem corresponding to the cloud-safe filename."""
+    return _safe_pdf_artifact_stem(pdf_path)
+
+
+def _safe_pdf_artifact_stem(pdf_path: Path) -> str:
+    """Return a bounded, stable stem for internal artifacts derived from a PDF."""
     return Path(_cloud_safe_pdf_name(pdf_path)).stem
 
 
@@ -952,15 +957,16 @@ def _split_pdf(pdf_path: Path, chunk_size: int = DEFAULT_CHUNK_PAGES, output_dir
     if page_count <= chunk_size:
         return [pdf_path]
 
+    artifact_stem = _safe_pdf_artifact_stem(pdf_path)
     if output_dir is None:
-        output_dir = pdf_path.parent / f".{pdf_path.stem}_chunks"
+        output_dir = pdf_path.parent / f".{artifact_stem}_chunks"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     chunks: list[Path] = []
     with pymupdf.open(pdf_path) as src_doc:
         for start in range(0, page_count, chunk_size):
             end = min(start + chunk_size, page_count)  # exclusive
-            chunk_name = f"{pdf_path.stem}_p{start:04d}-{end - 1:04d}.pdf"
+            chunk_name = f"{artifact_stem}_p{start:04d}-{end - 1:04d}.pdf"
             chunk_path = output_dir / chunk_name
 
             if chunk_path.exists():
@@ -1095,7 +1101,7 @@ def _convert_long_pdf(pdf_path: Path, opts: ConvertOptions, chunk_size: int = DE
         return _validation_failure_result(pdf_path, validation, t0)
 
     out_dir = opts.output_dir if opts.output_dir else pdf_path.parent
-    chunks_dir = out_dir / f".{pdf_path.stem}_chunks"
+    chunks_dir = out_dir / f".{_safe_pdf_artifact_stem(pdf_path)}_chunks"
 
     chunk_paths = _split_pdf(pdf_path, chunk_size=chunk_size, output_dir=chunks_dir)
 
@@ -1145,7 +1151,7 @@ def _convert_long_pdf_cloud(
         return _validation_failure_result(pdf_path, validation, t0)
 
     out_dir = opts.output_dir if opts.output_dir else pdf_path.parent
-    chunks_dir = out_dir / f".{pdf_path.stem}_chunks"
+    chunks_dir = out_dir / f".{_safe_pdf_artifact_stem(pdf_path)}_chunks"
 
     chunk_paths = _split_pdf(pdf_path, chunk_size=chunk_size, output_dir=chunks_dir)
 

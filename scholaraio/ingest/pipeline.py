@@ -1094,15 +1094,20 @@ def _process_inbox(
             # Move namespaced assets back to per-stem structure
             for br in batch_results:
                 did = br.pdf_path.stem
-                target = inbox_dir / f"{did}_mineru_images"
+                asset_stem = _safe_pdf_artifact_stem_from_stem(did)
+                target = inbox_dir / f"{asset_stem}_mineru_images"
                 if normalize_batch_assets:
                     # Normalize cloud assets into the legacy inbox layout so later
                     # extract/dedup/ingest steps can reuse the existing asset mover.
-                    namespaced_images = inbox_dir / f"{did}_images"
-                    if namespaced_images.is_dir():
-                        namespaced_images.rename(target)
+                    for candidate_stem in _asset_stem_candidates(did, ""):
+                        namespaced_images = inbox_dir / f"{candidate_stem}_images"
+                        if _path_is_dir(namespaced_images):
+                            if target.exists():
+                                shutil.rmtree(target)
+                            namespaced_images.rename(target)
+                            break
                     nested_images = br.md_path.parent / "images" if br.md_path else None
-                    if nested_images and nested_images.is_dir() and nested_images != target:
+                    if nested_images and _path_is_dir(nested_images) and nested_images != target:
                         if target.exists():
                             shutil.rmtree(target)
                         shutil.move(str(nested_images), str(target))
@@ -1602,13 +1607,16 @@ def _move_batch_images(paper_md: Path, pdir: Path, stem: str, md_src: Path | Non
     """Move images produced by cloud batch conversion into ``pdir/images``."""
     image_sources: list[Path] = []
 
-    legacy_images_src = tmp_dir / f"{stem}_images"
-    if legacy_images_src.is_dir():
-        image_sources.append(legacy_images_src)
+    for candidate_stem in _asset_stem_candidates(stem, ""):
+        legacy_images_src = tmp_dir / f"{candidate_stem}_images"
+        if _path_is_dir(legacy_images_src):
+            image_sources.append(legacy_images_src)
 
     if md_src is not None:
-        for candidate in [md_src.parent / "images", md_src.parent / f"{stem}_images"]:
-            if candidate.is_dir() and candidate not in image_sources:
+        candidates = [md_src.parent / "images"]
+        candidates.extend(md_src.parent / f"{candidate_stem}_images" for candidate_stem in _asset_stem_candidates(stem, ""))
+        for candidate in candidates:
+            if _path_is_dir(candidate) and candidate not in image_sources:
                 image_sources.append(candidate)
 
     if not image_sources:
@@ -1632,7 +1640,9 @@ def _move_batch_images(paper_md: Path, pdir: Path, stem: str, md_src: Path | Non
 
     if paper_md.exists():
         md_text = paper_md.read_text(encoding="utf-8")
-        fixed = md_text.replace(f"{stem}_images/", "images/")
+        fixed = md_text
+        for candidate_stem in _asset_stem_candidates(stem, ""):
+            fixed = fixed.replace(f"{candidate_stem}_images/", "images/")
         if fixed != md_text:
             paper_md.write_text(fixed, encoding="utf-8")
 
@@ -2300,22 +2310,58 @@ def _find_assets(inbox_dir: Path, asset_prefix: str, md_stem: str) -> tuple[Path
         (images_dir, json_files, origin_pdfs) — images_dir may be None.
     """
     images_dir = None
-    for candidate in [
-        inbox_dir / f"{asset_prefix}_mineru_images",
-        inbox_dir / f"{md_stem}_mineru_images",
-        inbox_dir / "images",
-    ]:
-        if candidate.is_dir():
+    for candidate_stem in _asset_stem_candidates(asset_prefix, md_stem):
+        candidate = inbox_dir / f"{candidate_stem}_mineru_images"
+        if _path_is_dir(candidate):
             images_dir = candidate
             break
+    if images_dir is None and _path_is_dir(inbox_dir / "images"):
+        images_dir = inbox_dir / "images"
+
     json_files: list[Path] = []
     origin_pdfs: list[Path] = []
-    for prefix in dict.fromkeys([asset_prefix, md_stem]):
+    for prefix in _asset_stem_candidates(asset_prefix, md_stem):
         if not prefix:
             continue
-        json_files.extend(inbox_dir.glob(f"{prefix}_*.json"))
-        origin_pdfs.extend(inbox_dir.glob(f"{prefix}_*_origin.pdf"))
+        json_files.extend(_safe_glob(inbox_dir, f"{prefix}_*.json"))
+        origin_pdfs.extend(_safe_glob(inbox_dir, f"{prefix}_*_origin.pdf"))
     return images_dir, json_files, origin_pdfs
+
+
+def _asset_stem_candidates(asset_prefix: str, md_stem: str) -> list[str]:
+    """Return safe-first legacy stem candidates for MinerU transient assets."""
+    candidates: list[str] = []
+
+    def add(stem: str) -> None:
+        if stem and stem not in candidates:
+            candidates.append(stem)
+
+    for stem in (asset_prefix, md_stem):
+        if not stem:
+            continue
+        add(_safe_pdf_artifact_stem_from_stem(stem))
+        add(stem)
+    return candidates
+
+
+def _safe_pdf_artifact_stem_from_stem(stem: str) -> str:
+    from scholaraio.ingest.mineru import _safe_pdf_artifact_stem
+
+    return _safe_pdf_artifact_stem(Path(f"{stem}.pdf"))
+
+
+def _path_is_dir(path: Path) -> bool:
+    try:
+        return path.is_dir()
+    except OSError:
+        return False
+
+
+def _safe_glob(parent: Path, pattern: str) -> list[Path]:
+    try:
+        return list(parent.glob(pattern))
+    except OSError:
+        return []
 
 
 def _move_assets(inbox_dir: Path, dest_dir: Path, asset_prefix: str, md_stem: str) -> None:
