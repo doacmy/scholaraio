@@ -391,7 +391,9 @@ def call_llm(
     根据 ``llm_cfg.backend`` 分发到对应后端：
     - ``"anthropic"``  — 调用 Anthropic 接口；
     - ``"google"``     — 调用 Google Gemini 接口；
-    - 其他值           — 视为 OpenAI-compatible，使用 ``/v1/chat/completions`` 端点。
+    - 其他值           — 视为 OpenAI-compatible，使用 provider-specific chat
+      completions 端点（大多数后端为 ``/v1/chat/completions``；智谱
+      ``open.bigmodel.cn/api/paas`` 使用 ``/v4/chat/completions``）。
 
     每个后端都会在可用时解析 token 用量（如 ``response.usage`` 或等价字段），
     并将 token 统计和耗时记录到 MetricsStore。
@@ -512,8 +514,8 @@ def _call_openai_compat(
     max_tokens: int,
     timeout: int,
 ) -> tuple[str, int, int, int, str]:
-    """OpenAI-compatible /v1/chat/completions（DeepSeek / OpenAI / vLLM / Ollama 等）。"""
-    url = llm_cfg.base_url.rstrip("/") + "/v1/chat/completions"
+    """OpenAI-compatible chat completions（默认 ``/v1``，智谱 ``/api/paas/v4``）。"""
+    url = _resolve_openai_compat_chat_url(llm_cfg.base_url)
 
     messages: list[dict[str, str]] = []
     if system:
@@ -548,6 +550,22 @@ def _call_openai_compat(
     tokens_total = usage.get("total_tokens", 0)
     model_name = data.get("model", llm_cfg.model)
     return content, tokens_in, tokens_out, tokens_total, model_name
+
+
+def _resolve_openai_compat_chat_url(base_url: str) -> str:
+    """Resolve the chat completions endpoint for an OpenAI-compatible backend.
+
+    Most providers use ``/v1/chat/completions``. Zhipu's OpenAI-compatible API
+    exposes the chat endpoint under ``/api/paas/v4/chat/completions``.
+    """
+    base = base_url.rstrip("/")
+    if base.endswith("/chat/completions"):
+        return base
+    if base.endswith("/v1") or base.endswith("/v4"):
+        return base + "/chat/completions"
+    if "open.bigmodel.cn/api/paas" in base:
+        return base + "/v4/chat/completions"
+    return base + "/v1/chat/completions"
 
 
 def _call_anthropic(

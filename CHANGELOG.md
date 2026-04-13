@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-04-14
+
 ### Added
 
 - **Qwen agent support**: Added `.qwen/skills` symlink to `.claude/skills/` so Qwen-based agents can discover ScholarAIO skills out of the box
@@ -19,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Cursor compatibility CI coverage**: Added regression coverage to keep the Cursor rule wrapper lightweight and explicitly MCP-free
 - **Proceedings routing test stability**: Tests no longer assume the first `data/proceedings` entry is a proceedings volume directory, avoiding CI-only failures when `proceedings.db` sorts before real volume folders
 - **Unified search transparency**: `usearch` and `fsearch` now print an explicit message when semantic retrieval is unavailable and the command degrades to keyword-only search
+- **Zhipu GLM OpenAI-compatible chat routing** ([#60](https://github.com/ZimoLiao/scholaraio/issues/60)): `call_llm()` now maps `open.bigmodel.cn/api/paas` to the correct `/v4/chat/completions` endpoint instead of incorrectly forcing `/v1/chat/completions`
 
 ## [1.3.0] — 2026-04-06
 
