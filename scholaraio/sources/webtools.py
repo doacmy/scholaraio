@@ -50,18 +50,21 @@ def _load_json_response(req: Request, *, timeout: int, error_prefix: str):
 
 
 def check_websearch_health(base_url: str | None = None) -> dict:
+    """Check whether the external web search service is healthy."""
     base = _resolve_base_url(base_url, "WEBSEARCH_URL", _DEFAULT_WEBSEARCH_URL)
     req = Request(f"{base}/health", method="GET")
     return _load_json_response(req, timeout=5, error_prefix="搜索服务健康检查失败")
 
 
 def check_webextract_health(base_url: str | None = None) -> dict:
+    """Check whether the external web extraction service is healthy."""
     base = _resolve_base_url(base_url, "WEBEXTRACT_URL", _DEFAULT_WEBEXTRACT_URL)
     req = Request(f"{base}/health", method="GET")
     return _load_json_response(req, timeout=5, error_prefix="提取服务健康检查失败")
 
 
 def websearch(query: str, count: int = 10, base_url: str | None = None) -> list[dict]:
+    """Run a web search request against the configured external service."""
     base = _resolve_base_url(base_url, "WEBSEARCH_URL", _DEFAULT_WEBSEARCH_URL)
     api_key = _resolve_api_key("WEBSEARCH_API_KEY")
     payload = json.dumps({"query": query, "count": count}).encode("utf-8")
@@ -70,6 +73,7 @@ def websearch(query: str, count: int = 10, base_url: str | None = None) -> list[
 
 
 def webextract(url: str, pdf: bool | None = None, base_url: str | None = None) -> dict:
+    """Extract rendered page content from a URL via the external extractor service."""
     base = _resolve_base_url(base_url, "WEBEXTRACT_URL", _DEFAULT_WEBEXTRACT_URL)
     api_key = _resolve_api_key("WEBEXTRACT_API_KEY")
     body: dict[str, object] = {"url": url}
@@ -85,6 +89,7 @@ def webextract(url: str, pdf: bool | None = None, base_url: str | None = None) -
 
 
 def webextract_batch(urls: list[str], base_url: str | None = None) -> list[dict]:
+    """Extract multiple URLs through the Open WebUI-compatible batch endpoint."""
     base = _resolve_base_url(base_url, "WEBEXTRACT_URL", _DEFAULT_WEBEXTRACT_URL)
     api_key = _resolve_api_key("WEBEXTRACT_API_KEY")
     req = Request(
