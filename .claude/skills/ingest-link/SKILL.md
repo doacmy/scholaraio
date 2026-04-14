@@ -60,6 +60,7 @@ scholaraio ingest-link https://example.com/report.pdf --pdf
 
 - ScholarAIO does not render webpages itself in this flow
 - It depends on an external `qt-web-extractor` service
+- The value of that service is rendered-content extraction, not just raw HTML download
 - Default endpoint: `http://127.0.0.1:8766`
 - Override with `WEBEXTRACT_URL`
 
@@ -73,7 +74,7 @@ scholaraio ingest-link https://example.com/report.pdf --pdf
 ## Practical Heuristics
 
 - Prefer `--no-index` when ingesting many links and you plan to rebuild once at the end
-- Prefer `--pdf` for direct PDF URLs if automatic detection seems unreliable
+- Let the backend auto-detect normal web pages and PDF URLs first; prefer `--pdf` only when detection seems unreliable
 - If the backend is unavailable, report that clearly instead of pretending ScholarAIO can fetch/render the page alone
 
 ## Output Style

@@ -21,8 +21,15 @@ scholaraio ingest-link https://example.com/page
 This command:
 
 1. Calls a running `qt-web-extractor` service.
-2. Writes extracted Markdown into a temporary document inbox.
-3. Reuses the existing ScholarAIO document ingest pipeline.
+2. Pulls rendered page content instead of only raw HTML source.
+3. Writes extracted Markdown into a temporary document inbox.
+4. Reuses the existing ScholarAIO document ingest pipeline.
+
+In practice, this means `scholaraio ingest-link` can ingest:
+
+- JavaScript-rendered pages that a plain HTTP fetch would miss
+- online PDFs and report URLs
+- technical docs, manuals, standards, and web articles as normal `document` records
 
 The current command expects `qt-web-extractor` to be reachable through:
 
@@ -32,15 +39,18 @@ The current command expects `qt-web-extractor` to be reachable through:
 ## Recommended setup
 
 1. Install and configure the backend services:
-   - `qt-web-extractor` for URL/PDF extraction
+   - `qt-web-extractor` for rendered URL/PDF extraction
    - optional `GUILessBingSearch` for search-first workflows
 2. Keep ScholarAIO as the authoritative local knowledge pipeline (ingest/index/enrich).
 3. In agent workflows:
    - use ScholarAIO first for reproducible local evidence;
    - use webtools only when freshness or external coverage is required.
 
+`qt-web-extractor` is an external daemon, not a built-in ScholarAIO fetcher. ScholarAIO delegates browser rendering to that service and then continues with its own ingest pipeline.
+
 ## Operational guidelines
 
 - Prefer local KB evidence for stable academic claims.
 - For time-sensitive facts, cross-check via webtools and record access date.
 - When webtools is unavailable, agent should degrade gracefully to local-only ScholarAIO workflows.
+- Prefer the default automatic URL handling first; use `scholaraio ingest-link --pdf <url>` only when a PDF URL needs an explicit hint.

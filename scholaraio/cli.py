@@ -3659,12 +3659,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_arxiv_fetch.add_argument("--dry-run", action="store_true", help="预览将要执行的操作")
 
     # --- ingest-link ---
-    p_ingest_link = sub.add_parser("ingest-link", help="抓取网页链接并按文档流程直接入库")
+    p_ingest_link = sub.add_parser("ingest-link", help="抓取渲染后的网页/在线 PDF，并按文档流程直接入库")
     p_ingest_link.set_defaults(func=cmd_ingest_link)
-    p_ingest_link.add_argument("urls", nargs="+", help="一个或多个网页/PDF URL")
+    p_ingest_link.add_argument("urls", nargs="+", help="一个或多个网页/在线 PDF URL")
     p_ingest_link.add_argument("--dry-run", action="store_true", help="预览将要执行的操作")
     p_ingest_link.add_argument("--force", action="store_true", help="强制重新处理生成的文档")
-    p_ingest_link.add_argument("--pdf", action="store_true", help="提示 webextract 按 PDF 模式抓取")
+    p_ingest_link.add_argument("--pdf", action="store_true", help="仅在自动识别不稳时，提示 webextract 按 PDF 模式抓取")
     p_ingest_link.add_argument("--no-index", action="store_true", help="仅入库，不执行 embed/index")
     p_ingest_link.add_argument("--json", action="store_true", help="输出抓取结果摘要 JSON")
 
