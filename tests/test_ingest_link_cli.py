@@ -399,3 +399,89 @@ class TestIngestLinkCommand:
         assert seen["md_name"] == "01-download.md"
         assert len(seen["md_name"].encode("utf-8")) < 255
         assert not any("失败" in message for message in messages)
+
+    def test_ingest_link_retries_transient_extraction_exception(self, tmp_path, monkeypatch):
+        messages: list[str] = []
+        sleep_calls: list[float] = []
+        attempts = {"count": 0}
+        monkeypatch.setattr(cli, "ui", messages.append)
+        monkeypatch.setattr(cli.time, "sleep", sleep_calls.append)
+
+        def fake_extract(url, *, pdf=None, base_url=None):
+            attempts["count"] += 1
+            if attempts["count"] < 3:
+                raise RuntimeError("temporary outage")
+            return {
+                "url": url,
+                "title": "Recovered Page",
+                "text": "Recovered body",
+                "html": "",
+                "error": "",
+            }
+
+        monkeypatch.setattr("scholaraio.sources.webtools.webextract", fake_extract)
+
+        seen: dict[str, object] = {}
+
+        def fake_run_pipeline(step_names, cfg, opts):
+            seen["steps"] = step_names
+            seen["files"] = sorted(path.name for path in opts["doc_inbox_dir"].glob("*.md"))
+
+        monkeypatch.setattr("scholaraio.ingest.pipeline.run_pipeline", fake_run_pipeline)
+
+        cli.cmd_ingest_link(
+            Namespace(
+                urls=["https://example.com/retry"],
+                dry_run=False,
+                force=False,
+                pdf=False,
+                no_index=True,
+                json=False,
+            ),
+            SimpleNamespace(_root=tmp_path, papers_dir=tmp_path / "data" / "papers"),
+        )
+
+        assert attempts["count"] == 3
+        assert sleep_calls == [1.0, 2.0]
+        assert seen["steps"] == ["extract_doc", "ingest"]
+        assert seen["files"] == ["01-recovered-page.md"]
+        assert any("提取失败，准备重试" in message for message in messages)
+        assert any("重试后成功" in message for message in messages)
+
+    def test_ingest_link_skips_url_after_retry_budget_exhausted(self, tmp_path, monkeypatch):
+        messages: list[str] = []
+        sleep_calls: list[float] = []
+        attempts = {"count": 0}
+        monkeypatch.setattr(cli, "ui", messages.append)
+        monkeypatch.setattr(cli.time, "sleep", sleep_calls.append)
+
+        def fake_extract(url, *, pdf=None, base_url=None):
+            attempts["count"] += 1
+            raise RuntimeError("temporary outage")
+
+        monkeypatch.setattr("scholaraio.sources.webtools.webextract", fake_extract)
+
+        pipeline_called = {"value": False}
+
+        def fake_run_pipeline(*args, **kwargs):
+            pipeline_called["value"] = True
+
+        monkeypatch.setattr("scholaraio.ingest.pipeline.run_pipeline", fake_run_pipeline)
+
+        cli.cmd_ingest_link(
+            Namespace(
+                urls=["https://example.com/retry"],
+                dry_run=False,
+                force=False,
+                pdf=False,
+                no_index=True,
+                json=False,
+            ),
+            SimpleNamespace(_root=tmp_path, papers_dir=tmp_path / "data" / "papers"),
+        )
+
+        assert attempts["count"] == 3
+        assert sleep_calls == [1.0, 2.0]
+        assert pipeline_called["value"] is False
+        assert any("已跳过" in message and "temporary outage" in message for message in messages)
+        assert any("没有可入库的链接内容" in message for message in messages)

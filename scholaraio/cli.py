@@ -2432,6 +2432,55 @@ def _render_ingest_link_markdown(title: str, source_url: str, body: str) -> str:
     return "\n".join(parts).rstrip() + "\n"
 
 
+def _webextract_for_ingest_link(
+    url: str,
+    *,
+    pdf: bool | None,
+    extractor,
+    max_attempts: int = 3,
+    backoff_base: float = 1.0,
+) -> dict:
+    last_result: dict | None = None
+    last_error = ""
+    last_source_url = url
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            result = extractor(url, pdf=pdf)
+        except Exception as exc:
+            last_result = None
+            last_error = str(exc)
+            last_source_url = url
+        else:
+            result = result or {}
+            source_url = (result.get("url") or url).strip()
+            error = (result.get("error") or "").strip()
+            text = result.get("text") or ""
+            last_result = result
+            last_error = error
+            last_source_url = source_url
+            if not error or text.strip():
+                if attempt > 1:
+                    ui(f"链接提取重试后成功: {source_url} (第 {attempt} 次)")
+                return result
+
+        if attempt >= max_attempts:
+            break
+        wait = backoff_base * float(2 ** (attempt - 1))
+        ui(f"链接提取失败，准备重试: {last_source_url} ({last_error})，{wait:.1f}s 后重试")
+        time.sleep(wait)
+
+    if last_result is not None:
+        return last_result
+    return {
+        "url": last_source_url,
+        "title": "",
+        "text": "",
+        "html": "",
+        "error": last_error or "unknown extraction error",
+    }
+
+
 def cmd_ingest_link(args: argparse.Namespace, cfg) -> None:
     from scholaraio.ingest.pipeline import run_pipeline
     from scholaraio.sources.webtools import webextract
@@ -2465,7 +2514,7 @@ def cmd_ingest_link(args: argparse.Namespace, cfg) -> None:
 
             for idx, url in enumerate(urls, start=1):
                 pdf_mode = True if args.pdf else None
-                result = webextract(url, pdf=pdf_mode)
+                result = _webextract_for_ingest_link(url, pdf=pdf_mode, extractor=webextract)
                 source_url = (result.get("url") or url).strip()
                 error = (result.get("error") or "").strip()
                 text = result.get("text") or ""
