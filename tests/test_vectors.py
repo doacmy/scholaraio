@@ -248,7 +248,9 @@ def test_build_vectors_skips_faiss_append_when_cache_missing(tmp_papers, tmp_db,
 
 def test_vsearch_embeds_query_before_loading_faiss_index(tmp_db, monkeypatch):
     with sqlite3.connect(tmp_db) as conn:
-        conn.execute("CREATE TABLE paper_vectors (paper_id TEXT PRIMARY KEY, embedding BLOB NOT NULL, content_hash TEXT)")
+        conn.execute(
+            "CREATE TABLE paper_vectors (paper_id TEXT PRIMARY KEY, embedding BLOB NOT NULL, content_hash TEXT)"
+        )
         conn.commit()
 
     order: list[str] = []
